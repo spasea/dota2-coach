@@ -43,8 +43,8 @@ and previously green unrelated coverage remains green.
    extensions for relative runtime imports.
 7. Express 5 is the HTTP framework for the base runtime.
 8. The runtime remains a modular monolith. Modules are code boundaries inside the process, not independent services.
-9. npm remains local to `apps/runtime`; a root JavaScript workspace is deferred until another JavaScript application
-   creates a concrete need for it.
+9. Application dependencies and scripts remain local to `apps/runtime`. The root npm package owns repository-only
+   development tooling for Husky, lint-staged, and Prettier; it is not an npm workspace or application package.
 10. Jest is the spec runner. `@swc/jest` transforms TypeScript for Jest, while `tsc --noEmit` remains the authoritative
     type check.
 11. Jest may execute transformed tests as CommonJS internally. The built runtime and its smoke test must execute the
@@ -119,7 +119,7 @@ environment defaults, Compose wiring, or Kubernetes assumptions.
 - Frontend endpoints, browser concerns, CORS policy, and shared frontend contracts
 - Python runtime, LLM prompts, HTTP/gRPC client, retries, and circuit breaking
 - Kubernetes resources, Kustomize overlays, KSOPS files, GitOps reconciliation, and production rollout
-- Root npm workspace, monorepo task runner, and speculative shared packages
+- npm workspaces, monorepo task runner, and speculative shared packages
 - Authentication, authorization, onboarding, or multi-tenancy beyond static trusted GSI client tokens
 - CI provider configuration and repository branch/release policy
 
@@ -310,6 +310,22 @@ Development dependencies:
 - `typescript-eslint`
 - `prettier`
 
+Repository development dependencies remain in the root package and do not become runtime dependencies:
+
+- `husky`
+- `lint-staged`
+- `prettier`
+
+The root pre-commit hook runs lint-staged from the repository root. lint-staged formats staged code and structured
+configuration files only, using the existing `apps/runtime/.prettierrc`; it does not rewrite Markdown or run the
+complete runtime type-check, lint, test, or build suite. Activating Husky is an explicit local setup step and is not
+performed implicitly during `npm install`.
+
+Required repository scripts:
+
+- `hooks:install` — explicitly activate the tracked Husky hooks in the local Git checkout
+- `lint:staged` — run the staged-only Prettier tasks used by pre-commit
+
 Install mutually compatible current releases during implementation and commit the resulting `package-lock.json`. Do not
 record guessed patch versions in this plan.
 
@@ -438,6 +454,8 @@ Completed:
 - Added strict `NodeNext` type checking and a separate ESM build configuration.
 - Added Jest with SWC's internal CommonJS transform and `.js`-extension mapping for TypeScript source imports.
 - Added typed ESLint flat configuration, Prettier checks, and enforceable module/integration import restrictions.
+- Added repository-level Husky and lint-staged configuration for staged-only Prettier formatting; local hook activation
+  remains an explicit developer setup step.
 - Added the required npm scripts and a minimal ESM entry-point resolution spec without introducing runtime behavior.
 - Verified Node.js `v24.18.0`, one passing Jest suite/test, full `npm run check`, direct built ESM startup, local `tsx`
   execution, and `npm audit` with zero reported vulnerabilities.
