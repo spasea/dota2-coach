@@ -67,11 +67,26 @@ and previously green unrelated coverage remains green.
 21. Pino provides structured JSON logging. Human-readable local output may be enabled outside the core runtime without
     changing log event contracts.
 22. TypeScript path aliases are excluded from the base slice. Relative imports avoid extra runtime and Jest resolvers.
-23. Module directories stay shallow until additional use cases create a real need for internal
-    `domain/application/infrastructure` sublayers.
-24. Local development runs through Docker Compose. Production Kubernetes, KSOPS, Kustomize, GitOps, custom resources,
+23. Runtime source is separated by responsibility: `modules/` contains business capabilities, `integrations/` contains
+    external protocols and SDKs, `platform/` contains technical runtime capabilities, and `bootstrap/` is the
+    composition root.
+24. `match` is a core module and owns latest client state. It will later own match lifecycle, normalized match facts,
+    temporal memory, coverage, and factual match-context queries.
+25. GSI is an inbound integration. It owns HTTP transport mapping, bearer extraction, raw payload validation, and later
+    raw-GSI normalization, then invokes the public `match` API. It does not own latest-state storage.
+26. `buy` and `lost` are independent sibling business modules. Each owns its context, candidates, hard gates, scoring,
+    hysteresis, feature data, decision types, and use cases.
+27. `buy` and `lost` must not import each other. `match` must not import either recommendation module. Discord may invoke
+    their public APIs but must not reach into their internals.
+28. Similar scoring pipelines do not justify a shared scoring-engine implementation. Stable cross-feature value types
+    may be extracted only after both modules exist and demonstrate identical semantics.
+29. Each business module exposes an explicit `public.ts` API. Cross-module deep imports are forbidden; module internals
+    remain replaceable without changing consumers.
+30. Internal `application/`, `domain/`, `data/`, and `infrastructure/` directories are created according to actual module
+    responsibilities. Empty future `buy`, `lost`, Discord, TTS, or LLM directories are not created by this slice.
+31. Local development runs through Docker Compose. Production Kubernetes, KSOPS, Kustomize, GitOps, custom resources,
     rollout, and secret-delivery design are not part of this plan.
-25. This plan is documentation-only. Implementation begins only after the plan status changes to `approved`.
+32. This plan is documentation-only. Implementation begins only after the plan status changes to `approved`.
 
 ## Deferred Decisions
 
@@ -98,7 +113,7 @@ environment defaults, Compose wiring, or Kubernetes assumptions.
 - TTS provider selection, audio queue, watchdog, and deadlines
 - `MatchMemory`, match lifecycle, sticky timeline source, freshness policy, and multi-client context building
 - Snapshot normalization beyond the minimum ingest boundary
-- `I'm lost` and `Buy` recommendation engines
+- Implementation of the `lost` and `buy` modules, while preserving their fixed future boundaries
 - Curated hero, item, threat, or capability data
 - Database, durable state, raw snapshot archive, and restart recovery
 - Frontend endpoints, browser concerns, CORS policy, and shared frontend contracts
@@ -114,20 +129,22 @@ environment defaults, Compose wiring, or Kubernetes assumptions.
 YAML client config
         │
         ▼
-validated runtime config ───────────────┐
-                                       │
-GET /health ───────────────────────────►│ Express application
-                                       │
-POST /gsi + Bearer token ──────────────►│
-        │                              │
-        ▼                              │
-trusted client identity                │
-        │                              │
-        ▼                              │
-minimal snapshot validation            │
-        │                              │
-        ▼                              │
-InMemoryLatestStateStore ◄─────────────┘
+validated runtime config ───────────────────────────┐
+                                                    │
+GET /health ───────────────────────────────────────►│ platform/http
+                                                    │
+POST /gsi + Bearer token                            │
+        │                                           │
+        ▼                                           │
+integrations/gsi                                    │
+  authenticate + validate raw boundary              │
+        │                                           │
+        ▼                                           │
+modules/match public API ◄──────────────────────────┘
+  recordClientSnapshot
+        │
+        ▼
+InMemoryLatestStateStore
         │
         ▼
 structured metadata log, never raw snapshot/token
@@ -139,9 +156,19 @@ logs safe metadata, and stops cleanly.
 
 ## Architectural Boundaries
 
+### Runtime source categories
+
+- `modules/` owns business capabilities and their invariants.
+- `integrations/` translates external protocols and SDK events into module inputs and maps results back outward.
+- `platform/` provides configuration, HTTP hosting, logging, time, and process-level technical behavior.
+- `bootstrap/` selects concrete implementations and connects modules, integrations, and platform capabilities.
+
+No category is a generic shared-code bucket. In particular, `platform/` must not contain match, item, coaching, or
+recommendation rules.
+
 ### Composition root
 
-`main.ts` is the process entry point. It may:
+`main.ts` is the minimal process entry point. `bootstrap/create-runtime.ts` may:
 
 - load process-level settings;
 - load and validate trusted client configuration through an injected source;
@@ -149,7 +176,8 @@ logs safe metadata, and stops cleanly.
 - bind the HTTP server;
 - handle startup failure and graceful `SIGTERM` / `SIGINT` shutdown.
 
-`main.ts` must not contain route behavior, token resolution rules, YAML parsing rules, or latest-state mutation logic.
+Neither bootstrap file may contain route behavior, token resolution rules, YAML parsing rules, or latest-state mutation
+logic.
 
 ### HTTP application
 
@@ -175,19 +203,65 @@ Configuration has separate stages:
 The configuration module must not know about Compose, Kubernetes, KSOPS, or GitOps. Those systems only supply the
 configured source at the process boundary.
 
-### GSI module
+### Match module
 
-The initial GSI module owns:
+The initial `match` module owns:
 
-- bearer-token extraction and trusted client lookup;
-- minimum snapshot validation;
-- ingest use-case orchestration;
-- latest-client-state contracts;
+- latest-client-state contracts and invariants;
+- client-scoped latest-state replacement;
+- the `RecordClientSnapshot` application use case;
+- the latest-state store port;
 - the in-memory latest-state implementation;
-- its HTTP router and transport mapping.
+- the public API consumed by inbound integrations.
 
-It does not own Discord identity behavior beyond retaining configured identity metadata, and it does not infer match,
-team, role, or recommendation state.
+Future match lifecycle, temporal memory, coverage, and factual context belong here, but are not implemented in this
+slice. The module must not depend on Express, raw GSI field names, Discord, `buy`, or `lost`.
+
+### GSI integration
+
+The initial `integrations/gsi` boundary owns:
+
+- its Express router and HTTP response mapping;
+- bearer-token extraction and trusted client lookup;
+- minimum raw snapshot validation;
+- mapping an accepted request into the public `match` command.
+
+It does not own latest-state contracts or storage. Later raw-GSI normalization may remain in this integration, but the
+result passed to `match` must use canonical match input vocabulary rather than Express or transport types.
+
+### Future recommendation modules
+
+`buy` and `lost` remain separate sibling modules when their slices begin:
+
+- `buy` owns item candidates, curated threat/capability data, item filters, item scoring, context hash, hysteresis, and
+  `BuyDecision`;
+- `lost` owns macro-action candidates, temporal/readiness gates, action scoring, previous-advice hysteresis, and
+  `LostDecision`.
+
+Both may consume the public factual query surface of `match`. Neither may access GSI payloads, Discord SDK values, or
+the other module's internals. A shared recommendation contract, if later justified, contains stable value types only
+and no generic candidate generation, hard gates, scoring formula, sorting, hysteresis, configuration, or rendering.
+
+### Module APIs and dependencies
+
+Every business module exposes a `public.ts`. Consumers import that entry point rather than internal files. Dependency
+direction is:
+
+```text
+integrations/gsi ──► modules/match
+
+                     modules/match
+                       ▲       ▲
+                       │       │
+               modules/buy   modules/lost
+                       ▲       ▲
+                       │       │
+                  integrations/discord
+
+bootstrap ──► composes all concrete implementations
+```
+
+The diagram describes allowed knowledge, not process boundaries. All components remain in one runtime process for MVP.
 
 ### Observability
 
@@ -260,30 +334,44 @@ remain stable.
 apps/runtime/
 ├── src/
 │   ├── main.ts
-│   ├── app.ts
-│   ├── config/
-│   │   ├── config.types.ts
-│   │   ├── load-runtime-config.ts
-│   │   └── parse-client-config.ts
-│   ├── http/
-│   │   ├── http-error.ts
-│   │   ├── error-handler.ts
-│   │   └── request-context.ts
-│   ├── logging/
-│   │   └── create-logger.ts
-│   └── modules/
-│       ├── health/
-│       │   ├── health.router.ts
-│       │   └── health.router.spec.ts
+│   ├── bootstrap/
+│   │   └── create-runtime.ts
+│   ├── platform/
+│   │   ├── config/
+│   │   │   ├── config.types.ts
+│   │   │   ├── load-runtime-config.ts
+│   │   │   └── parse-client-config.ts
+│   │   ├── http/
+│   │   │   ├── create-app.ts
+│   │   │   ├── errors/
+│   │   │   │   ├── http-error.ts
+│   │   │   │   └── error-handler.ts
+│   │   │   ├── health/
+│   │   │   │   ├── health.router.ts
+│   │   │   │   └── health.router.spec.ts
+│   │   │   └── request-context.ts
+│   │   ├── logging/
+│   │   │   └── create-logger.ts
+│   │   └── time/
+│   │       └── clock.ts
+│   ├── modules/
+│   │   └── match/
+│   │       ├── public.ts
+│   │       ├── application/
+│   │       │   ├── latest-state-store.ts
+│   │       │   ├── record-client-snapshot.ts
+│   │       │   └── record-client-snapshot.spec.ts
+│   │       ├── domain/
+│   │       │   └── latest-client-state.ts
+│   │       └── infrastructure/
+│   │           ├── in-memory-latest-state-store.ts
+│   │           └── in-memory-latest-state-store.spec.ts
+│   └── integrations/
 │       └── gsi/
+│           ├── authenticate-gsi-client.ts
 │           ├── gsi.router.ts
 │           ├── gsi.router.spec.ts
-│           ├── ingest-gsi-snapshot.ts
-│           ├── ingest-gsi-snapshot.spec.ts
-│           ├── latest-client-state.ts
-│           ├── latest-state-store.ts
-│           ├── in-memory-latest-state-store.ts
-│           └── in-memory-latest-state-store.spec.ts
+│           └── parse-gsi-request.ts
 ├── test/
 │   └── fixtures/
 ├── eslint.config.js
@@ -294,7 +382,9 @@ apps/runtime/
 └── tsconfig.json
 ```
 
-Avoid empty future-facing directories for Discord, TTS, recommendations, LLM, persistence, or frontend contracts.
+Later slices add `modules/buy`, `modules/lost`, `integrations/discord`, and `integrations/tts` as siblings. They are not
+created as empty placeholders in this slice. Do not add a generic `recommendations`, `common`, `shared`, `services`, or
+`utils` directory as a substitute for assigning ownership.
 
 ## Milestone Status
 
@@ -320,6 +410,11 @@ Completed:
 - Confirmed the first health and GSI ingest vertical.
 - Confirmed bearer-token authentication and the main `204`, `401`, and `422` responses.
 - Confirmed YAML as the trusted client configuration format.
+- Confirmed `modules`, `integrations`, `platform`, and `bootstrap` source categories.
+- Confirmed `match` owns latest state and GSI remains an inbound integration.
+- Confirmed independent sibling boundaries for future `buy` and `lost` modules.
+- Confirmed public module entry points, dependency direction, and the prohibition on cross-module deep imports.
+- Confirmed that no generic scoring pipeline is extracted before both engines prove stable shared semantics.
 - Recorded local secret delivery and production Kubernetes configuration as deferred rather than assumed.
 
 Exit criteria:
@@ -341,6 +436,8 @@ Implement:
 - Add strict TypeScript configuration for Node.js ESM and a separate build configuration.
 - Add Jest with `@swc/jest`, explicit `@jest/globals` imports, and `*.spec.ts` discovery.
 - Add ESLint flat configuration and keep Prettier as a separate formatting concern.
+- Encode the agreed source-category and cross-module import boundaries where ESLint can enforce them without depending
+  on nonexistent future modules.
 - Add the required npm scripts.
 - Add a minimal compile-and-test fixture proving TypeScript, Jest, and ESM build output work together.
 - Ensure generated `dist/` and test coverage output remain ignored.
@@ -430,11 +527,12 @@ Resolve before starting:
 
 Add RED unit specs for:
 
-- latest-state replacement for repeated snapshots from the same client;
-- independent latest state for different clients;
-- server receive time supplied through an injected clock;
+- `match` latest-state replacement for repeated snapshots from the same client;
+- independent `match` latest state for different clients;
+- server receive time supplied to `match` through an injected clock;
 - stored snapshot/reference behavior does not allow accidental caller mutation;
-- ingest use case stores resolved identity and accepted snapshot metadata.
+- the `RecordClientSnapshot` use case stores resolved identity and accepted snapshot metadata;
+- the GSI integration maps an authenticated request to the public `match` command without exposing Express types.
 
 Add RED HTTP specs with Supertest for:
 
@@ -450,17 +548,18 @@ Add RED HTTP specs with Supertest for:
 Add compile-safe seams for:
 
 - `Clock` or equivalent receive-time dependency;
-- latest-client-state and store contracts;
-- in-memory store;
-- ingest use case;
-- health and GSI routers;
+- `match` latest-client-state and store contracts;
+- `match` in-memory store and `RecordClientSnapshot` use case;
+- `match/public.ts` as the only GSI-to-match import surface;
+- platform health router and GSI integration router;
 - application factory and error middleware.
 
 Exit criteria:
 
 - New specs compile and fail only on missing HTTP, ingest, or store behavior.
 - Specs construct the application without listening on a network port.
-- No match, Discord, TTS, or recommendation behavior is introduced.
+- The GSI integration does not own or implement latest-state storage.
+- No match lifecycle/memory, Discord, TTS, `buy`, or `lost` behavior is introduced.
 
 ## Phase 5 — HTTP Health and GSI Ingest GREEN
 
@@ -468,14 +567,15 @@ Status: `not-started`
 
 Implement:
 
-1. Build the in-memory latest-state store with client-scoped replacement semantics.
-2. Implement the ingest use case independently of Express types.
-3. Implement bearer extraction and client resolution at the GSI HTTP boundary.
-4. Validate only the approved minimum snapshot shape.
-5. Add health and GSI routers.
-6. Add request correlation, bounded request logging, not-found handling, and final error mapping.
-7. Build the Express app through `createApp(dependencies)`.
-8. Ensure successful ingest logging contains safe metadata only.
+1. Build the `match` in-memory latest-state store with client-scoped replacement semantics.
+2. Implement `RecordClientSnapshot` independently of Express and raw GSI types.
+3. Expose the required command and types through `match/public.ts` only.
+4. Implement bearer extraction and client resolution at the GSI integration boundary.
+5. Validate only the approved minimum raw snapshot shape and map it to the `match` command.
+6. Add the platform health router and GSI integration router.
+7. Add request correlation, bounded request logging, not-found handling, and final error mapping under `platform/http`.
+8. Build the Express app through `createApp(dependencies)`.
+9. Ensure successful ingest logging contains safe metadata only.
 
 Exit criteria:
 
@@ -483,6 +583,7 @@ Exit criteria:
 - A successful request synchronously updates the correct client's latest in-memory state.
 - Rejected requests do not mutate state.
 - Express types remain at the transport boundary.
+- GSI imports `match` through `public.ts`; `match` contains no Express or raw GSI vocabulary.
 - Raw snapshots and credentials are absent from logs.
 
 ## Phase 6 — Runtime and Container Integration
@@ -493,7 +594,9 @@ Target end state: `green`
 
 Implement:
 
-- Compose validated config, logger, clock, store, ingest use case, and Express app in `main.ts`.
+- Compose validated config, logger, clock, the `match` store/use case, the GSI integration, and the Express app in
+  `bootstrap/create-runtime.ts`.
+- Keep `main.ts` limited to starting the composed runtime and reporting terminal startup failure.
 - Fail startup before listening when required runtime configuration is invalid.
 - Bind the server on the configured host and port.
 - Handle `SIGTERM` and `SIGINT` with bounded graceful HTTP shutdown.
@@ -540,7 +643,10 @@ Verify:
 - no focused, skipped, or intentional RED specs remain;
 - no compile-safe stub remains on a production path;
 - no bearer token or raw GSI snapshot appears in logs or error responses;
-- no Express request/response object crosses into the ingest use case or store;
+- no Express request/response object crosses from `integrations/gsi` into `modules/match`;
+- `integrations/gsi` imports `modules/match` only through `public.ts`;
+- `modules/match` does not import Express, raw GSI transport types, Discord, `buy`, or `lost`;
+- no generic `recommendations`, `common`, `shared`, `services`, or `utils` ownership bucket was introduced;
 - no frontend, Discord, TTS, LLM, persistence, or Kubernetes scope leaked into the slice;
 - deferred decisions remain documented and are not implemented through accidental defaults;
 - the MVP specification links and fixed decisions remain accurate.
@@ -551,7 +657,8 @@ Exit criteria:
 - The containerized vertical works end to end with a safe development fixture.
 - Milestones M1–M5 and Phases 1–7 are marked `completed`.
 - The document records any unavailable external verification explicitly.
-- The implementation is ready for review as the foundation for `MatchMemory` and Discord verticals.
+- The implementation is ready for review as the foundation for `MatchMemory` and independent `buy`, `lost`, and
+  Discord verticals.
 
 ## Acceptance Matrix
 
@@ -565,6 +672,10 @@ Exit criteria:
 | Ingest | Valid authenticated object produces `204` and replaces client latest state |
 | Validation | Invalid top-level snapshot shapes produce `422` without state mutation |
 | Isolation | Different clients retain independent latest states |
+| State ownership | Latest-state contracts and storage belong to `modules/match`, not `integrations/gsi` |
+| Integration boundary | GSI maps HTTP/raw input to the public `match` command without leaking transport types |
+| Module API | Cross-module imports use `public.ts`; no deep import is required by the vertical |
+| Future features | `buy` and `lost` remain independent sibling boundaries with no shared scoring implementation |
 | Logging | Correlation and bounded metadata are present; credentials and raw bodies are absent |
 | Startup | Invalid required config prevents port binding |
 | Shutdown | `SIGTERM` / `SIGINT` closes the HTTP server cleanly |
