@@ -8,7 +8,7 @@ export type TrustedClientIdentity = Readonly<{
 }>;
 
 export type TrustedClientRegistry = Readonly<{
-  resolveToken: (bearerToken: string) => TrustedClientIdentity | null;
+  resolveToken: (gsiToken: string) => TrustedClientIdentity | null;
 }>;
 
 export type ClientConfigYamlSources = Readonly<{

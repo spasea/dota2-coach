@@ -4,7 +4,8 @@ import type { ClientConfigYamlSources } from './config.types.js';
 import { ConfigurationError } from './configuration-error.js';
 import { parseClientConfig } from './parse-client-config.js';
 
-const bearerToken = 'local-test-token-with-high-entropy-placeholder';
+const gsiToken = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const secondGsiToken = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
 
 const validSources: ClientConfigYamlSources = {
   clientsYaml: `
@@ -17,9 +18,9 @@ clients:
 schema_version: 1
 client_credentials:
   client-01:
-    bearer_token: ${bearerToken}
-    discord_user_id: "123456789"
-    coach_alias: Local Player
+    gsi_token: ${gsiToken}
+    discord_user_id: "123456789012345678"
+    coach_alias: "  Local Player  "
 `,
 };
 
@@ -37,27 +38,27 @@ function captureConfigurationError(run: () => unknown): ConfigurationError {
 describe('trusted client configuration', () => {
   it('joins public and private configuration into an immutable safe identity lookup', () => {
     const registry = parseClientConfig(validSources);
-    const identity = registry.resolveToken(bearerToken);
+    const identity = registry.resolveToken(gsiToken);
 
     expect(identity).toEqual({
       clientId: 'client-01',
-      discordUserId: '123456789',
+      discordUserId: '123456789012345678',
       coachAlias: 'Local Player',
       defaultRole: 2,
     });
+    expect(Object.isFrozen(registry)).toBe(true);
     expect(Object.isFrozen(identity)).toBe(true);
-    expect(identity).not.toHaveProperty('bearerToken');
-    expect(JSON.stringify(registry)).not.toContain(bearerToken);
+    expect(identity).not.toHaveProperty('gsiToken');
+    expect(JSON.stringify(registry)).not.toContain(gsiToken);
   });
 
   it('does not retain a caller-owned source reference', () => {
-    const callerOwnedSources = {
-      ...validSources,
-      credentialsYaml: 'schema_version: 1\nclient_credentials: {}',
-    };
+    const callerOwnedSources = { ...validSources };
     const registry = parseClientConfig(callerOwnedSources);
 
-    expect(registry.resolveToken(bearerToken)?.clientId).toBe('client-01');
+    callerOwnedSources.credentialsYaml = 'schema_version: 1\nclient_credentials: {}';
+
+    expect(registry.resolveToken(gsiToken)?.clientId).toBe('client-01');
   });
 
   it('reports invalid YAML without exposing its contents', () => {
@@ -79,7 +80,27 @@ describe('trusted client configuration', () => {
     [
       'empty token',
       validSources.clientsYaml,
-      'schema_version: 1\nclient_credentials:\n  client-01:\n    bearer_token: ""\n    discord_user_id: "123456789"\n    coach_alias: Local Player',
+      'schema_version: 1\nclient_credentials:\n  client-01:\n    gsi_token: ""\n    discord_user_id: "123456789012345678"\n    coach_alias: Local Player',
+    ],
+    [
+      'weak token',
+      validSources.clientsYaml,
+      'schema_version: 1\nclient_credentials:\n  client-01:\n    gsi_token: short\n    discord_user_id: "123456789012345678"\n    coach_alias: Local Player',
+    ],
+    [
+      'invalid client ID',
+      'schema_version: 1\nclients:\n  "Client 01":\n    default_role: 2',
+      validSources.credentialsYaml,
+    ],
+    [
+      'invalid Discord identity',
+      validSources.clientsYaml,
+      `schema_version: 1\nclient_credentials:\n  client-01:\n    gsi_token: ${gsiToken}\n    discord_user_id: invalid\n    coach_alias: Local Player`,
+    ],
+    [
+      'unknown public field',
+      'schema_version: 1\nclients:\n  client-01:\n    default_role: 2\n    expected_lane: mid',
+      validSources.credentialsYaml,
     ],
     ['incomplete join', validSources.clientsYaml, 'schema_version: 1\nclient_credentials: {}'],
     [
@@ -89,8 +110,8 @@ describe('trusted client configuration', () => {
 schema_version: 1
 client_credentials:
   client-02:
-    bearer_token: another-local-test-token
-    discord_user_id: "987654321"
+    gsi_token: ${secondGsiToken}
+    discord_user_id: "987654321098765432"
     coach_alias: Second Player
 `,
     ],
@@ -107,17 +128,17 @@ client_credentials:
 
   it.each([
     [
-      'bearer token',
+      'GSI token',
       `
 schema_version: 1
 client_credentials:
   client-01:
-    bearer_token: ${bearerToken}
-    discord_user_id: "123456789"
+    gsi_token: ${gsiToken}
+    discord_user_id: "123456789012345678"
     coach_alias: Local Player
   client-02:
-    bearer_token: ${bearerToken}
-    discord_user_id: "987654321"
+    gsi_token: ${gsiToken}
+    discord_user_id: "987654321098765432"
     coach_alias: Second Player
 `,
     ],
@@ -127,12 +148,12 @@ client_credentials:
 schema_version: 1
 client_credentials:
   client-01:
-    bearer_token: ${bearerToken}
-    discord_user_id: "123456789"
+    gsi_token: ${gsiToken}
+    discord_user_id: "123456789012345678"
     coach_alias: Local Player
   client-02:
-    bearer_token: another-local-test-token
-    discord_user_id: "123456789"
+    gsi_token: ${secondGsiToken}
+    discord_user_id: "123456789012345678"
     coach_alias: Second Player
 `,
     ],

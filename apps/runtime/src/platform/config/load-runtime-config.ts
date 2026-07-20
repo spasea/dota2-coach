@@ -1,11 +1,24 @@
 import type { ClientConfigPaths, ClientConfigYamlSources, ReadConfigText } from './config.types.js';
+import { ConfigurationError } from './configuration-error.js';
 
-export function loadClientConfigSources(
+export async function loadClientConfigSources(
   paths: ClientConfigPaths,
   readConfigText: ReadConfigText
 ): Promise<ClientConfigYamlSources> {
-  void paths;
-  void readConfigText;
+  let clientsYaml: string;
+  let credentialsYaml: string;
 
-  return Promise.reject(new Error('Phase 3 configuration source loading is not implemented.'));
+  try {
+    clientsYaml = await readConfigText(paths.clientConfigPath);
+  } catch {
+    throw new ConfigurationError({ source: 'clients', stage: 'source' });
+  }
+
+  try {
+    credentialsYaml = await readConfigText(paths.clientCredentialsPath);
+  } catch {
+    throw new ConfigurationError({ source: 'credentials', stage: 'source' });
+  }
+
+  return Object.freeze({ clientsYaml, credentialsYaml });
 }

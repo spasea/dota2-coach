@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 3 — Configuration and Authentication GREEN (not started)`
+- Current implementation phase: `Phase 4 — HTTP Health and GSI Ingest RED (not started)`
 - Last updated: `2026-07-20`
 
 Status values:
@@ -52,14 +52,16 @@ and previously green unrelated coverage remains green.
 12. Specs use the `*.spec.ts` naming convention and import Jest APIs explicitly from `@jest/globals`.
 13. The first vertical slice contains runtime bootstrap, typed configuration, structured logging, graceful shutdown,
     `GET /health`, authenticated `POST /gsi`, and an in-memory latest-client-state store.
-14. `POST /gsi` authenticates clients with a bearer token resolved against trusted YAML client configuration.
-15. A successful GSI ingest returns `204 No Content`; a missing or unknown bearer token returns `401`; a syntactically
-    valid JSON value that is not an accepted snapshot object returns `422`.
+14. `POST /gsi` authenticates native Dota GSI clients with the JSON payload field `auth.token`, resolved against trusted
+    YAML client configuration. HTTP `Authorization` is not part of this integration contract.
+15. A successful GSI ingest returns an empty `200 OK`; an object without a valid `auth.token` or with an unknown token
+    returns `401`; a syntactically valid JSON value that is not an accepted snapshot object returns `422`.
 16. Initial snapshot validation is deliberately shallow: the request body must be a non-null JSON object and not an
-    array. The slice does not invent a complete GSI schema before fields are consumed.
+    array. Shape validation precedes authentication, so null, arrays, and primitives return `422`; object payloads are
+    then authenticated. The slice does not invent a complete GSI schema before fields are consumed.
 17. The latest state stores the resolved client identity, server receive time, and in-memory snapshot. It does not
-    persist raw snapshots.
-18. Bearer tokens and raw GSI snapshots must not be emitted to application or request logs.
+    persist raw snapshots. The transport-only `auth` field is removed before the snapshot crosses into `match`.
+18. GSI auth tokens and raw GSI snapshots must not be emitted to application or request logs.
 19. Application construction and network listening are separate. Tests build the Express application through a
     dependency-injected factory without binding a real port.
 20. Zod validates process-level configuration and parsed YAML configuration. YAML parsing and semantic validation are
@@ -72,8 +74,9 @@ and previously green unrelated coverage remains green.
     composition root.
 24. `match` is a core module and owns latest client state. It will later own match lifecycle, normalized match facts,
     temporal memory, coverage, and factual match-context queries.
-25. GSI is an inbound integration. It owns HTTP transport mapping, bearer extraction, raw payload validation, and later
-    raw-GSI normalization, then invokes the public `match` API. It does not own latest-state storage.
+25. GSI is an inbound integration. It owns HTTP transport mapping, `auth.token` extraction and removal, raw payload
+    validation, and later raw-GSI normalization, then invokes the public `match` API. It does not own latest-state
+    storage.
 26. `buy` and `lost` are independent sibling business modules. Each owns its context, candidates, hard gates, scoring,
     hysteresis, feature data, decision types, and use cases.
 27. `buy` and `lost` must not import each other. `match` must not import either recommendation module. Discord may invoke
@@ -88,16 +91,18 @@ and previously green unrelated coverage remains green.
     rollout, and secret-delivery design are not part of this plan.
 32. This plan is documentation-only. Implementation begins only after the plan status changes to `approved`.
 33. Trusted client configuration is split into two versioned YAML documents joined by a stable `client_id`. The public
-    document contains `client_id` and `default_role`; the private document contains bearer token, Discord user ID, and
+    document contains `client_id` and `default_role`; the private document contains `gsi_token`, Discord user ID, and
     coach alias.
-34. A `client_id` is a neutral non-sensitive mapping key. It must not contain a player name, Discord identity, bearer
+34. A `client_id` is a neutral non-sensitive mapping key. It must not contain a player name, Discord identity, GSI
     credential, or other personal data.
 35. Both documents use `schema_version: 1`. Every public client has exactly one private credential entry; unknown,
     missing, or duplicate cross-document identities fail startup validation.
 36. The runtime receives the documents through required `CLIENT_CONFIG_PATH` and `CLIENT_CREDENTIALS_PATH` process
     values, reads them once during startup, and keeps the resulting configuration immutable. Hot reload is excluded.
-37. Each client has one active high-entropy bearer token in this slice. Tokens are secret values rather than YAML keys;
-    duplicate token values are rejected, and only token digests remain in the long-lived lookup registry.
+37. Each client has one active high-entropy GSI token in this slice. Tokens are 32–128 character Base64URL-compatible
+    opaque values without whitespace; `openssl rand -hex 32` is the recommended generator. Tokens are secret YAML
+    values rather than keys; duplicate values are rejected, and only SHA-256 token digests remain in the long-lived
+    lookup registry.
 38. Local public configuration is tracked under `ops/dev/config/runtime/`. A private example is tracked under
     `ops/dev/secrets/runtime/`, while `*.local.yaml` credentials in that directory are ignored by Git.
 39. Production Kubernetes resources live in a separate GitOps repository and are reconciled by Argo CD with KSOPS and
@@ -110,7 +115,7 @@ The following decisions are intentionally not guessed in this slice:
 
 1. The exact Compose mounts that supply the approved local configuration paths to the runtime container.
 2. Production GitOps repository layout, Kubernetes resources, age key management, rotation, and reconciliation details.
-3. Overlapping bearer credentials for zero-downtime token rotation.
+3. Overlapping GSI credentials for zero-downtime token rotation.
 4. The exact `GET /health` response payload beyond a successful JSON health response.
 5. The response code and public error shape for malformed JSON and unsupported media types.
 6. The default and maximum accepted GSI request-body size.
@@ -149,7 +154,7 @@ validated runtime config ──────────────────�
                                                     │
 GET /health ───────────────────────────────────────►│ platform/http
                                                     │
-POST /gsi + Bearer token                            │
+POST /gsi + JSON auth.token                         │
         │                                           │
         ▼                                           │
 integrations/gsi                                    │
@@ -239,7 +244,7 @@ slice. The module must not depend on Express, raw GSI field names, Discord, `buy
 The initial `integrations/gsi` boundary owns:
 
 - its Express router and HTTP response mapping;
-- bearer-token extraction and trusted client lookup;
+- `auth.token` extraction/removal and trusted client lookup;
 - minimum raw snapshot validation;
 - mapping an accepted request into the public `match` command.
 
@@ -283,22 +288,22 @@ The diagram describes allowed knowledge, not process boundaries. All components 
 ### Observability
 
 The base logger records bounded metadata such as request ID, route, status, latency, resolved internal client ID, and
-receive time. It must redact authorization headers and avoid serializing request bodies.
+receive time. It must avoid serializing request bodies, including their transport-only `auth` field.
 
 ## HTTP Contract Baseline
 
-| Request | Confirmed behavior | Notes |
-| --- | --- | --- |
-| `GET /health` | Success response with JSON content | Exact payload is deferred before HTTP RED specs |
-| `POST /gsi` without bearer token | `401` | Same public behavior as an unknown token |
-| `POST /gsi` with unknown bearer token | `401` | Do not reveal whether a token is registered |
-| `POST /gsi` with a valid token and accepted object body | `204` with no response body | State is updated synchronously in memory |
-| `POST /gsi` with a valid token and non-object, null, or array body | `422` | Full GSI field validation is out of scope |
-| malformed JSON | Deferred | Must be fixed before Phase 4 |
-| unsupported media type | Deferred | Must be fixed before Phase 4 |
+| Request                                                        | Confirmed behavior                 | Notes                                                                               |
+| -------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------- |
+| `GET /health`                                                  | Success response with JSON content | Exact payload is deferred before HTTP RED specs                                     |
+| `POST /gsi` with an object missing a valid `auth.token`        | `401`                              | Same public behavior as an unknown token                                            |
+| `POST /gsi` with an object containing an unknown `auth.token`  | `401`                              | Do not reveal whether a token is registered                                         |
+| `POST /gsi` with a known `auth.token` and accepted object body | Empty `200 OK`                     | `auth` is removed; state is updated synchronously in memory                         |
+| `POST /gsi` with a non-object, null, or array body             | `422`                              | Shape validation precedes authentication; full GSI field validation is out of scope |
+| malformed JSON                                                 | Deferred                           | Must be fixed before Phase 4                                                        |
+| unsupported media type                                         | Deferred                           | Must be fixed before Phase 4                                                        |
 
-The initial store update is synchronous and does not imply downstream normalization or match-memory completion. A `204`
-only confirms that the authenticated latest snapshot was accepted into process memory.
+The initial store update is synchronous and does not imply downstream normalization or match-memory completion. An
+empty `200 OK` only confirms that the authenticated latest snapshot was accepted into process memory.
 
 ## Package and Tooling Baseline
 
@@ -426,14 +431,14 @@ created as empty placeholders in this slice. Do not add a generic `recommendatio
 
 ## Milestone Status
 
-| Milestone | RED phase | GREEN phase | Status |
-| --- | --- | --- | --- |
-| M0. Contract baseline | — | Phase 0 | `completed` |
-| M1. ESM toolchain | — | Phase 1 | `completed` |
-| M2. Configuration and auth | Phase 2 | Phase 3 | `in-progress` |
-| M3. HTTP ingest vertical | Phase 4 | Phase 5 | `not-started` |
-| M4. Container runtime | — | Phase 6 | `not-started` |
-| M5. Verification and handoff | — | Phase 7 | `not-started` |
+| Milestone                    | RED phase | GREEN phase | Status        |
+| ---------------------------- | --------- | ----------- | ------------- |
+| M0. Contract baseline        | —         | Phase 0     | `completed`   |
+| M1. ESM toolchain            | —         | Phase 1     | `completed`   |
+| M2. Configuration and auth   | Phase 2   | Phase 3     | `completed`   |
+| M3. HTTP ingest vertical     | Phase 4   | Phase 5     | `not-started` |
+| M4. Container runtime        | —         | Phase 6     | `not-started` |
+| M5. Verification and handoff | —         | Phase 7     | `not-started` |
 
 ## Phase 0 — Contract Baseline
 
@@ -446,7 +451,7 @@ Completed:
 - Confirmed TypeScript ESM, Express 5, Jest specs, and modular-monolith boundaries.
 - Confirmed Jest transformation strategy and a real ESM build smoke test.
 - Confirmed the first health and GSI ingest vertical.
-- Confirmed bearer-token authentication and the main `204`, `401`, and `422` responses.
+- Confirmed native GSI payload authentication through `auth.token` and the main `200`, `401`, and `422` responses.
 - Confirmed YAML as the trusted client configuration format.
 - Confirmed `modules`, `integrations`, `platform`, and `bootstrap` source categories.
 - Confirmed `match` owns latest state and GSI remains an inbound integration.
@@ -528,14 +533,14 @@ Completed:
 - Added intent-driven RED specs covering source loading, safe immutable identity resolution, syntax and semantic
   failures, cross-document joins, uniqueness, and indistinguishable missing/unknown authentication.
 - Verified type checking, ESLint, Prettier, and the ESM build remain green; the Phase 1 regression spec remains green;
-  14 new Phase 2 assertions fail on the three intentionally unimplemented Phase 3 seams.
+  20 new Phase 2 assertions fail on the three intentionally unimplemented Phase 3 seams.
 
 Resolved before starting:
 
 - `CLIENT_CONFIG_PATH` and `CLIENT_CREDENTIALS_PATH` identify separate public and private YAML sources;
 - public clients contain stable neutral `client_id` mapping keys and `default_role`;
-- private credentials contain bearer token, Discord user ID, and coach alias under the corresponding `client_id`;
-- bearer tokens are YAML values, so duplicate token values are explicitly rejected after parsing;
+- private credentials contain `gsi_token`, Discord user ID, and coach alias under the corresponding `client_id`;
+- GSI tokens are YAML values, so duplicate token values are explicitly rejected after parsing;
 - startup-only loading, one active token per client, and digest-backed long-lived lookup are fixed for this slice;
 - local public values and private example files are tracked, while local plaintext credentials are ignored;
 - Kubernetes, Argo CD, KSOPS, SOPS age, and production repository implementation remain outside this app-repo phase.
@@ -546,7 +551,7 @@ Add RED specs for:
 - invalid YAML syntax fails with a configuration error that does not expose file contents;
 - missing clients, mismatched document versions, invalid client entries, invalid roles, empty tokens, incomplete joins,
   duplicate Discord identities, and duplicate token values fail startup validation;
-- a missing or unknown bearer token produces the same authentication result;
+- a missing or unknown GSI auth token produces the same authentication result;
 - token lookup does not return or log the original credential;
 - configuration output cannot be mutated through a caller-owned input reference.
 
@@ -565,21 +570,36 @@ Exit criteria:
 
 ## Phase 3 — Configuration and Authentication GREEN
 
-Status: `not-started`
+Status: `completed`
+
+Completed:
+
+- Implemented sequential process-boundary loading of the public and private YAML sources with safe source-specific
+  failures that do not expose paths or underlying filesystem details.
+- Separated YAML syntax parsing from strict Zod validation for both versioned documents.
+- Enforced neutral client IDs, roles `1..5`, Base64URL-compatible 32–128 character GSI tokens, Discord snowflake
+  strings, trimmed coach aliases, strict fields, non-empty documents, exact joins, and uniqueness constraints.
+- Joined the documents into frozen trusted identities and a frozen registry that retains SHA-256 token digests rather
+  than plaintext credentials.
+- Implemented constant public authentication behavior for missing and unknown GSI tokens without exposing credential
+  details.
+- Verified type checking, ESLint, 21 passing Jest assertions, and safe configuration errors.
 
 Implement:
 
 - Separate YAML syntax parsing from semantic validation.
 - Map validated YAML into immutable runtime configuration.
-- Implement constant-contract bearer lookup without exposing registered-token details.
-- Emit safe startup diagnostics that identify the configuration stage but not secrets or file content.
+- Implement constant-contract GSI token lookup without exposing registered-token details.
+- Return safe startup errors that identify the configuration stage but not secrets, paths, or file content; bootstrap
+  logging remains part of Phase 6 composition.
 - Compose the approved local process-boundary YAML source without introducing Kubernetes vocabulary into application
   modules.
 
 Exit criteria:
 
 - Phase 2 specs pass.
-- Invalid trusted configuration fails before the HTTP server binds a port.
+- Invalid trusted configuration fails registry construction; Phase 6 bootstrap wiring must preserve this before-bind
+  ordering.
 - Tokens are not present in logs, thrown public messages, or inspectable latest-state values.
 - Production secret delivery remains deferred.
 
@@ -594,7 +614,7 @@ Resolve before starting:
 - exact `GET /health` response payload;
 - malformed JSON and unsupported media-type responses;
 - initial request-body size limit and its configuration boundary;
-- stable public JSON error shape for non-`204` responses.
+- stable public JSON error shape for non-`200` responses.
 
 Add RED unit specs for:
 
@@ -608,13 +628,14 @@ Add RED unit specs for:
 Add RED HTTP specs with Supertest for:
 
 - health success contract;
-- authenticated object snapshot returns `204` and no body;
-- missing and unknown bearer tokens return `401` without distinguishable detail;
-- null, array, and primitive JSON bodies return `422`;
+- authenticated object snapshot returns an empty `200 OK`;
+- object bodies with missing, malformed, or unknown `auth.token` values return `401` without distinguishable detail;
+- null, array, and primitive JSON bodies return `422` before authentication;
+- `auth` is removed before an accepted snapshot is passed to `match` or stored;
 - malformed JSON and unsupported media type follow the approved contract;
 - request-size rejection follows the approved contract;
 - route errors pass through one final JSON error mapper;
-- authorization headers and request bodies are absent from captured logs.
+- GSI auth tokens and request bodies are absent from captured logs.
 
 Add compile-safe seams for:
 
@@ -641,7 +662,7 @@ Implement:
 1. Build the `match` in-memory latest-state store with client-scoped replacement semantics.
 2. Implement `RecordClientSnapshot` independently of Express and raw GSI types.
 3. Expose the required command and types through `match/public.ts` only.
-4. Implement bearer extraction and client resolution at the GSI integration boundary.
+4. Implement `auth.token` extraction/removal and client resolution at the GSI integration boundary.
 5. Validate only the approved minimum raw snapshot shape and map it to the `match` command.
 6. Add the platform health router and GSI integration router.
 7. Add request correlation, bounded request logging, not-found handling, and final error mapping under `platform/http`.
@@ -713,7 +734,7 @@ Verify:
 
 - no focused, skipped, or intentional RED specs remain;
 - no compile-safe stub remains on a production path;
-- no bearer token or raw GSI snapshot appears in logs or error responses;
+- no GSI auth token or raw GSI snapshot appears in logs or error responses;
 - no Express request/response object crosses from `integrations/gsi` into `modules/match`;
 - `integrations/gsi` imports `modules/match` only through `public.ts`;
 - `modules/match` does not import Express, raw GSI transport types, Discord, `buy`, or `lost`;
@@ -733,25 +754,25 @@ Exit criteria:
 
 ## Acceptance Matrix
 
-| Capability | Required evidence |
-| --- | --- |
-| ESM runtime | `tsc` output starts through Node.js without a TypeScript loader |
-| Type safety | `tsc --noEmit` passes independently of Jest |
-| Spec runner | Jest executes `*.spec.ts` through SWC |
-| Health | Approved `GET /health` contract passes at app and running-process levels |
-| Authentication | Missing and unknown bearer credentials produce the same `401` contract |
-| Ingest | Valid authenticated object produces `204` and replaces client latest state |
-| Validation | Invalid top-level snapshot shapes produce `422` without state mutation |
-| Isolation | Different clients retain independent latest states |
-| State ownership | Latest-state contracts and storage belong to `modules/match`, not `integrations/gsi` |
-| Integration boundary | GSI maps HTTP/raw input to the public `match` command without leaking transport types |
-| Module API | Cross-module imports use `public.ts`; no deep import is required by the vertical |
-| Future features | `buy` and `lost` remain independent sibling boundaries with no shared scoring implementation |
-| Logging | Correlation and bounded metadata are present; credentials and raw bodies are absent |
-| Startup | Invalid required config prevents port binding |
-| Shutdown | `SIGTERM` / `SIGINT` closes the HTTP server cleanly |
-| Container | Docker build and local Compose smoke path succeed |
-| Scope | No deferred subsystem or production deployment design is introduced |
+| Capability           | Required evidence                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| ESM runtime          | `tsc` output starts through Node.js without a TypeScript loader                                        |
+| Type safety          | `tsc --noEmit` passes independently of Jest                                                            |
+| Spec runner          | Jest executes `*.spec.ts` through SWC                                                                  |
+| Health               | Approved `GET /health` contract passes at app and running-process levels                               |
+| Authentication       | Object payloads with missing and unknown GSI credentials produce the same `401` contract               |
+| Ingest               | Valid authenticated object produces an empty `200 OK`, strips `auth`, and replaces client latest state |
+| Validation           | Invalid top-level snapshot shapes produce `422` without state mutation                                 |
+| Isolation            | Different clients retain independent latest states                                                     |
+| State ownership      | Latest-state contracts and storage belong to `modules/match`, not `integrations/gsi`                   |
+| Integration boundary | GSI maps HTTP/raw input to the public `match` command without leaking transport types                  |
+| Module API           | Cross-module imports use `public.ts`; no deep import is required by the vertical                       |
+| Future features      | `buy` and `lost` remain independent sibling boundaries with no shared scoring implementation           |
+| Logging              | Correlation and bounded metadata are present; credentials and raw bodies are absent                    |
+| Startup              | Invalid required config prevents port binding                                                          |
+| Shutdown             | `SIGTERM` / `SIGINT` closes the HTTP server cleanly                                                    |
+| Container            | Docker build and local Compose smoke path succeed                                                      |
+| Scope                | No deferred subsystem or production deployment design is introduced                                    |
 
 ## Status Update Rule
 

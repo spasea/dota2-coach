@@ -180,35 +180,53 @@ Discord role button ───────────────► Match role 
 
 ### 5.1. Static client config
 
+Discord integration settings remain a separate application configuration concern for its later vertical:
+
 ```yaml
 discord:
   guild_id: "..."
   text_channel_id: "..."
   voice_channel_id: "..."
-
-clients:
-  invoker_pc_token:
-    discord_user_id: "123456789"
-    coach_alias: "Дима"
-    default_role: 2
-
-  venge_pc_token:
-    discord_user_id: "987654321"
-    coach_alias: "Саша"
-    default_role: 5
 ```
 
-Токен клиента передаётся как credential, например:
+Public client config:
+
+```yaml
+schema_version: 1
+clients:
+  client-01:
+    default_role: 2
+```
+
+Private credentials config:
+
+```yaml
+schema_version: 1
+client_credentials:
+  client-01:
+    gsi_token: "<openssl rand -hex 32>"
+    discord_user_id: "123456789012345678"
+    coach_alias: "Дима"
+```
+
+Оба документа связываются по нейтральному `client_id`. GSI token является долгоживущим opaque credential и
+генерируется, например, командой `openssl rand -hex 32`.
+
+Native Dota GSI передаёт token внутри JSON payload:
 
 ```http
 POST /gsi
-Authorization: Bearer invoker_pc_token
 Content-Type: application/json
 
-{ ...raw GSI snapshot... }
+{
+  "auth": { "token": "<gsi_token>" },
+  "...": "raw GSI snapshot fields"
+}
 ```
 
 Backend получает Discord identity из trusted config. Клиент не выбирает чужой `discord_user_id` самостоятельно.
+Поле `auth` удаляется на входной границе и не попадает в match command или latest-state storage. Успешно принятый
+snapshot получает пустой ответ `200 OK`.
 
 ### 5.2. Match-scoped role selection
 
@@ -272,7 +290,7 @@ type ClientState = {
 In-memory storage:
 
 ```ts
-Map<DiscordUserId, ClientState>
+Map<DiscordUserId, ClientState>;
 ```
 
 ### 6.2. Match session
@@ -367,17 +385,17 @@ MVP не сохраняет последовательность полных GS
 
 Retention и decision window разделяются. Например, building change events хранятся весь матч, но срочный `DEFEND` использует только последние 6/15/30 секунд.
 
-| Source | Что хранится | Retention |
-|---|---|---:|
-| `map` | match/state transitions, score changes | весь матч |
-| `player + hero` | normalized samples connected players | rolling 90 s |
-| enemy heroes | roster, first/last seen, last position | весь матч |
-| allied movement | positions/centroid trend | rolling 15–30 s |
-| `buildings` | только health changes/destruction | весь матч |
-| `events` | deduplicated parsed events, кроме chat | весь матч |
-| `items` | current authoritative inventory + milestones | milestones весь матч |
-| role override | последнее выбранное значение | до конца матча |
-| advice | последний result/context hash | до конца матча |
+| Source          | Что хранится                                 |            Retention |
+| --------------- | -------------------------------------------- | -------------------: |
+| `map`           | match/state transitions, score changes       |            весь матч |
+| `player + hero` | normalized samples connected players         |         rolling 90 s |
+| enemy heroes    | roster, first/last seen, last position       |            весь матч |
+| allied movement | positions/centroid trend                     |      rolling 15–30 s |
+| `buildings`     | только health changes/destruction            |            весь матч |
+| `events`        | deduplicated parsed events, кроме chat       |            весь матч |
+| `items`         | current authoritative inventory + milestones | milestones весь матч |
+| role override   | последнее выбранное значение                 |       до конца матча |
+| advice          | последний result/context hash                |       до конца матча |
 
 После окончания/смены `matchId` memory очищается. В MVP history не обязана переживать process restart; первый snapshot после restart становится baseline и сам по себе не создаёт delta/alert.
 
@@ -396,10 +414,13 @@ type MatchMemory = {
   buildings: Map<string, BuildingTemporalState>;
   events: Map<string, MatchEventMemory>;
   inventoryMilestones: InventoryMilestone[];
-  lastAdvice: Map<string, {
-    imLost?: AdviceMemory;
-    buy?: AdviceMemory;
-  }>;
+  lastAdvice: Map<
+    string,
+    {
+      imLost?: AdviceMemory;
+      buy?: AdviceMemory;
+    }
+  >;
 };
 ```
 
@@ -521,12 +542,12 @@ type BuildingTemporalState = {
 
 Начальные decision windows:
 
-| Age последнего damage | Семантика | Scoring/wording |
-|---:|---|---|
-| 0–6 s | вероятно получает урон сейчас | сильный `DEFEND` signal |
-| 6–15 s | недавно получало урон | осторожный warning, желательно minimap confirmation |
-| 15–30 s | недавнее lane/base pressure | слабый strategic context |
-| >30 s | historical damage | не повышает urgency; остаётся current low-HP context |
+| Age последнего damage | Семантика                     | Scoring/wording                                      |
+| --------------------: | ----------------------------- | ---------------------------------------------------- |
+|                 0–6 s | вероятно получает урон сейчас | сильный `DEFEND` signal                              |
+|                6–15 s | недавно получало урон         | осторожный warning, желательно minimap confirmation  |
+|               15–30 s | недавнее lane/base pressure   | слабый strategic context                             |
+|                 >30 s | historical damage             | не повышает urgency; остаётся current low-HP context |
 
 Граница 6 s основана на turbo dataset: 262 health drops; около 84% последовательных drops разделены не более чем 5 s. При episode gap до 6 s наблюдалось 53 episodes со средней длительностью около 5.7 s. Это начальный configurable default по одному матчу, а не инвариант Dota.
 
@@ -665,12 +686,12 @@ HOLD_AND_WAIT
 
 Внутренний смысл:
 
-| Action | Значение |
-|---|---|
-| `RESET` | восстановить HP/mana/позицию перед следующим действием |
-| `DEFEND` | реагировать на подтверждённый урон своему structure |
-| `REGROUP` | сократить опасную дистанцию до connected team cluster |
-| `FARM_SAFELY` | продолжить набор ресурсов без глубокой карты/изолированной позиции |
+| Action          | Значение                                                             |
+| --------------- | -------------------------------------------------------------------- |
+| `RESET`         | восстановить HP/mana/позицию перед следующим действием               |
+| `DEFEND`        | реагировать на подтверждённый урон своему structure                  |
+| `REGROUP`       | сократить опасную дистанцию до connected team cluster                |
+| `FARM_SAFELY`   | продолжить набор ресурсов без глубокой карты/изолированной позиции   |
 | `HOLD_AND_WAIT` | не форсировать новое действие до восстановления информации/readiness |
 
 `PLAY_WITH_TEAM` может быть добавлен как шестой candidate, если он не дублирует `REGROUP`.
@@ -1135,7 +1156,13 @@ type SpeechJob = {
   text: string;
   createdAt: number;
   expiresAt: number;
-  status: "queued" | "synthesizing" | "playing" | "completed" | "failed" | "timed_out";
+  status:
+    | "queued"
+    | "synthesizing"
+    | "playing"
+    | "completed"
+    | "failed"
+    | "timed_out";
 };
 ```
 
@@ -1195,23 +1222,23 @@ Reconnect/resume никогда не выполняется внутри interac
 
 Минимальные user-facing случаи:
 
-| Ситуация | Ответ |
-|---|---|
-| Discord user не связан с client | «Для твоего Discord-пользователя не настроен GSI client» |
-| Snapshot отсутствует/stale | «Я не получаю свежие игровые данные» |
-| Матч ещё не начался | «Совет доступен после загрузки текущего матча» |
-| Clients в разных матчах/teams | Исключить несовместимые clients и показать coverage |
-| Enemy roster incomplete | Выполнить partial scoring или честно отказать Buy |
-| Curated catalog не покрывает roster | Снизить confidence/отказать вместо генерации tags |
-| Нет item candidates после filters | «В текущем каталоге нет уверенной рекомендации» |
-| TTS error | Text уже доставлен; залогировать voice failure |
-| TTS/voice/playback timeout | Abort/stop resource; text уже доставлен; продолжить queue |
-| Несколько voice failures подряд | Временно text-only, async voice recovery |
-| Voice channel unavailable | Text-only degradation |
-| Повторный одинаковый action click в debounce window | Немедленный ephemeral ACK; не запускать scoring/TTS повторно |
-| Разные одновременные accepted actions | Независимый scoring/text; voice jobs идут FIFO |
-| Sticky timeline source stale | Продолжить current-only advice, отключить temporal claims, показать `unknown` |
-| Role button без active fresh match | Не менять default role; объяснить, что override доступен в матче |
+| Ситуация                                            | Ответ                                                                         |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Discord user не связан с client                     | «Для твоего Discord-пользователя не настроен GSI client»                      |
+| Snapshot отсутствует/stale                          | «Я не получаю свежие игровые данные»                                          |
+| Матч ещё не начался                                 | «Совет доступен после загрузки текущего матча»                                |
+| Clients в разных матчах/teams                       | Исключить несовместимые clients и показать coverage                           |
+| Enemy roster incomplete                             | Выполнить partial scoring или честно отказать Buy                             |
+| Curated catalog не покрывает roster                 | Снизить confidence/отказать вместо генерации tags                             |
+| Нет item candidates после filters                   | «В текущем каталоге нет уверенной рекомендации»                               |
+| TTS error                                           | Text уже доставлен; залогировать voice failure                                |
+| TTS/voice/playback timeout                          | Abort/stop resource; text уже доставлен; продолжить queue                     |
+| Несколько voice failures подряд                     | Временно text-only, async voice recovery                                      |
+| Voice channel unavailable                           | Text-only degradation                                                         |
+| Повторный одинаковый action click в debounce window | Немедленный ephemeral ACK; не запускать scoring/TTS повторно                  |
+| Разные одновременные accepted actions               | Независимый scoring/text; voice jobs идут FIFO                                |
+| Sticky timeline source stale                        | Продолжить current-only advice, отключить temporal claims, показать `unknown` |
+| Role button без active fresh match                  | Не менять default role; объяснить, что override доступен в матче              |
 
 ## 12. Logging
 
@@ -1378,18 +1405,18 @@ Voice завершается асинхронно, поэтому append-only lo
 
 Ориентиры зависят от существующего кода и не являются обязательным контрактом.
 
-| Шаг | Ориентир |
-|---|---:|
-| Static config и client↔Discord mapping | 20–40 мин |
-| Latest-state multi-client aggregator | 45–75 мин |
-| MatchMemory: roster/last-seen/buildings/events/player ring | 45–90 мин |
-| Discord message/buttons | 30–60 мин |
-| Match-scoped role buttons/override | 20–40 мин |
-| Voice connection, TTS и audio queue | 60–150 мин |
-| Упрощённый “I'm lost” | 60–90 мин |
-| Core final-target “Buy” + curated data | 60–120 мин |
-| Text mirror, logs и error guards | 45–60 мин |
-| Smoke-test с двумя clients | 30–60 мин |
+| Шаг                                                        |   Ориентир |
+| ---------------------------------------------------------- | ---------: |
+| Static config и client↔Discord mapping                     |  20–40 мин |
+| Latest-state multi-client aggregator                       |  45–75 мин |
+| MatchMemory: roster/last-seen/buildings/events/player ring |  45–90 мин |
+| Discord message/buttons                                    |  30–60 мин |
+| Match-scoped role buttons/override                         |  20–40 мин |
+| Voice connection, TTS и audio queue                        | 60–150 мин |
+| Упрощённый “I'm lost”                                      |  60–90 мин |
+| Core final-target “Buy” + curated data                     | 60–120 мин |
+| Text mirror, logs и error guards                           |  45–60 мин |
+| Smoke-test с двумя clients                                 |  30–60 мин |
 
 Рекомендуемый implementation order:
 
