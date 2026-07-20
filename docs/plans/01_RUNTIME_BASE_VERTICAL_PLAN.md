@@ -2,9 +2,9 @@
 
 ## Status
 
-- Plan status: `draft`
+- Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Toolchain and ESM foundation (not started)`
+- Current implementation phase: `Phase 2 — Configuration and Authentication RED (not started)`
 - Last updated: `2026-07-20`
 
 Status values:
@@ -306,6 +306,7 @@ Development dependencies:
 - `supertest`
 - `@types/supertest`
 - `eslint`
+- `@eslint/js`
 - `typescript-eslint`
 - `prettier`
 
@@ -391,7 +392,7 @@ created as empty placeholders in this slice. Do not add a generic `recommendatio
 | Milestone | RED phase | GREEN phase | Status |
 | --- | --- | --- | --- |
 | M0. Contract baseline | — | Phase 0 | `completed` |
-| M1. ESM toolchain | — | Phase 1 | `not-started` |
+| M1. ESM toolchain | — | Phase 1 | `completed` |
 | M2. Configuration and auth | Phase 2 | Phase 3 | `not-started` |
 | M3. HTTP ingest vertical | Phase 4 | Phase 5 | `not-started` |
 | M4. Container runtime | — | Phase 6 | `not-started` |
@@ -424,9 +425,22 @@ Exit criteria:
 
 ## Phase 1 — Toolchain and ESM Foundation
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
+
+Completed:
+
+- Converted the runtime package from CommonJS to a private Node.js 24 ESM application.
+- Installed the approved runtime and development dependency baseline with a committed npm lock file.
+- Kept Node.js types on major 24 and selected the latest TypeScript release compatible with the current
+  `typescript-eslint` peer contract.
+- Added strict `NodeNext` type checking and a separate ESM build configuration.
+- Added Jest with SWC's internal CommonJS transform and `.js`-extension mapping for TypeScript source imports.
+- Added typed ESLint flat configuration, Prettier checks, and enforceable module/integration import restrictions.
+- Added the required npm scripts and a minimal ESM entry-point resolution spec without introducing runtime behavior.
+- Verified Node.js `v24.18.0`, one passing Jest suite/test, full `npm run check`, direct built ESM startup, local `tsx`
+  execution, and `npm audit` with zero reported vulnerabilities.
 
 Implement:
 
