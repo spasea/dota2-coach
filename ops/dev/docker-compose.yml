@@ -1,0 +1,10 @@
+services:
+  runtime:
+    build:
+      context: ../../
+      dockerfile: ./ops/services/runtime/Dockerfile
+    image: ${COMPOSE_PROJECT_NAME}_runtime:dev
+    tty: true
+    restart: unless-stopped
+    volumes:
+      - ../../apps/runtime:/app
