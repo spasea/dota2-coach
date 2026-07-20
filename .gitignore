@@ -118,9 +118,6 @@ web_modules/
 .env.production.local
 .env.local
 
-# Local runtime credentials
-ops/dev/secrets/runtime/*.local.yaml
-
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -272,3 +269,6 @@ fabric.properties
 tmp
 
 .codebase-memory
+
+# Local runtime credentials
+ops/dev/secrets/runtime/*.local.yaml
