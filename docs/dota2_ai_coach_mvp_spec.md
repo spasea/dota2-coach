@@ -228,6 +228,10 @@ Backend получает Discord identity из trusted config. Клиент не
 Поле `auth` удаляется на входной границе и не попадает в match command или latest-state storage. Успешно принятый
 snapshot получает пустой ответ `200 OK`.
 
+`GET /health` возвращает `200` и `{ "status": "ok" }`. Максимальный размер GSI request body на первом этапе —
+`1_048_576` bytes. Ошибки имеют стабильную форму `{ "error": { "code": "<CODE>" } }`, а request correlation
+возвращается через заголовок `X-Request-Id` без включения приватных деталей в response body.
+
 ### 5.2. Match-scoped role selection
 
 `default_role` является только fallback. Во время текущего матча игрок может выбрать effective role через Discord:

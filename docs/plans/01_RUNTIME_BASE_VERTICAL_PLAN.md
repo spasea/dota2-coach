@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 4 — HTTP Health and GSI Ingest RED (not started)`
+- Current implementation phase: `Phase 5 — HTTP Health and GSI Ingest GREEN (not started)`
 - Last updated: `2026-07-20`
 
 Status values:
@@ -108,6 +108,15 @@ and previously green unrelated coverage remains green.
 39. Production Kubernetes resources live in a separate GitOps repository and are reconciled by Argo CD with KSOPS and
     SOPS age encryption. This application repository does not define that contour; production must mount the same two
     application-level documents and provide their paths.
+40. `GET /health` is a liveness-style endpoint that returns `200`, JSON content, and exactly `{ "status": "ok" }`.
+41. Non-success HTTP responses use the stable public shape `{ "error": { "code": "<CODE>" } }`. Correlation is returned
+    through `X-Request-Id`, not duplicated in the response body, and private error details are never exposed.
+42. The initial GSI request-body limit is `1_048_576` bytes. `createApp` receives it as a dependency; process-level
+    configuration wiring remains part of Phase 6.
+43. HTTP failures map to the fixed status/code pairs: malformed JSON is `400 INVALID_JSON`, oversized input is
+    `413 PAYLOAD_TOO_LARGE`, absent or unsupported media type is `415 UNSUPPORTED_MEDIA_TYPE`, failed GSI authentication
+    is `401 UNAUTHORIZED`, invalid top-level snapshot shape is `422 INVALID_SNAPSHOT`, an unknown route is
+    `404 NOT_FOUND`, and an unexpected failure is `500 INTERNAL_ERROR`.
 
 ## Deferred Decisions
 
@@ -116,14 +125,11 @@ The following decisions are intentionally not guessed in this slice:
 1. The exact Compose mounts that supply the approved local configuration paths to the runtime container.
 2. Production GitOps repository layout, Kubernetes resources, age key management, rotation, and reconciliation details.
 3. Overlapping GSI credentials for zero-downtime token rotation.
-4. The exact `GET /health` response payload beyond a successful JSON health response.
-5. The response code and public error shape for malformed JSON and unsupported media types.
-6. The default and maximum accepted GSI request-body size.
-7. A future readiness probe distinct from the initial liveness-style health endpoint.
-8. The full normalized GSI snapshot contract and which Dota fields become mandatory for later match processing.
-9. Freshness thresholds, match grouping, same-team validation, and timeline-source policy.
-10. Public frontend APIs and API versioning.
-11. Discord, TTS, recommendation-engine, and Python LLM transport contracts.
+4. A future readiness probe distinct from the initial liveness-style health endpoint.
+5. The full normalized GSI snapshot contract and which Dota fields become mandatory for later match processing.
+6. Freshness thresholds, match grouping, same-team validation, and timeline-source policy.
+7. Public frontend APIs and API versioning.
+8. Discord, TTS, recommendation-engine, and Python LLM transport contracts.
 
 Deferred decisions must be resolved before the phase that requires them. They must not be hidden inside route handlers,
 environment defaults, Compose wiring, or Kubernetes assumptions.
@@ -292,15 +298,18 @@ receive time. It must avoid serializing request bodies, including their transpor
 
 ## HTTP Contract Baseline
 
-| Request                                                        | Confirmed behavior                 | Notes                                                                               |
-| -------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------- |
-| `GET /health`                                                  | Success response with JSON content | Exact payload is deferred before HTTP RED specs                                     |
-| `POST /gsi` with an object missing a valid `auth.token`        | `401`                              | Same public behavior as an unknown token                                            |
-| `POST /gsi` with an object containing an unknown `auth.token`  | `401`                              | Do not reveal whether a token is registered                                         |
-| `POST /gsi` with a known `auth.token` and accepted object body | Empty `200 OK`                     | `auth` is removed; state is updated synchronously in memory                         |
-| `POST /gsi` with a non-object, null, or array body             | `422`                              | Shape validation precedes authentication; full GSI field validation is out of scope |
-| malformed JSON                                                 | Deferred                           | Must be fixed before Phase 4                                                        |
-| unsupported media type                                         | Deferred                           | Must be fixed before Phase 4                                                        |
+| Request                                                        | Confirmed behavior              | Notes                                                                               |
+| -------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
+| `GET /health`                                                  | `200` with `{ "status": "ok" }` | Liveness only; readiness remains deferred                                           |
+| `POST /gsi` with an object missing a valid `auth.token`        | `401`                           | Same public behavior as an unknown token                                            |
+| `POST /gsi` with an object containing an unknown `auth.token`  | `401`                           | Do not reveal whether a token is registered                                         |
+| `POST /gsi` with a known `auth.token` and accepted object body | Empty `200 OK`                  | `auth` is removed; state is updated synchronously in memory                         |
+| `POST /gsi` with a non-object, null, or array body             | `422`                           | Shape validation precedes authentication; full GSI field validation is out of scope |
+| malformed JSON                                                 | `400 INVALID_JSON`              | Stable public error shape                                                           |
+| body larger than `1_048_576` bytes                             | `413 PAYLOAD_TOO_LARGE`         | Limit is injected into `createApp`                                                  |
+| absent or unsupported media type                               | `415 UNSUPPORTED_MEDIA_TYPE`    | `POST /gsi` requires JSON                                                           |
+| unknown route                                                  | `404 NOT_FOUND`                 | Stable public error shape                                                           |
+| unexpected failure                                             | `500 INTERNAL_ERROR`            | Internal details are not exposed                                                    |
 
 The initial store update is synchronous and does not imply downstream normalization or match-memory completion. An
 empty `200 OK` only confirms that the authenticated latest snapshot was accepted into process memory.
@@ -384,14 +393,18 @@ apps/runtime/
 │   │   │   ├── parse-client-config.spec.ts
 │   │   │   └── parse-client-config.ts
 │   │   ├── http/
+│   │   │   ├── create-app.spec.ts
 │   │   │   ├── create-app.ts
 │   │   │   ├── errors/
+│   │   │   │   ├── error-handler.spec.ts
 │   │   │   │   ├── http-error.ts
 │   │   │   │   └── error-handler.ts
 │   │   │   ├── health/
-│   │   │   │   ├── health.router.ts
-│   │   │   │   └── health.router.spec.ts
-│   │   │   └── request-context.ts
+│   │   │   │   └── health.router.ts
+│   │   │   ├── middleware/
+│   │   │   │   ├── request-context.ts
+│   │   │   │   └── request-logging.ts
+│   │   │   └── not-found-handler.ts
 │   │   ├── logging/
 │   │   │   └── create-logger.ts
 │   │   └── time/
@@ -412,9 +425,7 @@ apps/runtime/
 │       └── gsi/
 │           ├── authenticate-gsi-client.spec.ts
 │           ├── authenticate-gsi-client.ts
-│           ├── gsi.router.ts
-│           ├── gsi.router.spec.ts
-│           └── parse-gsi-request.ts
+│           └── gsi.router.ts
 ├── test/
 │   └── fixtures/
 ├── eslint.config.js
@@ -436,7 +447,7 @@ created as empty placeholders in this slice. Do not add a generic `recommendatio
 | M0. Contract baseline        | —         | Phase 0     | `completed`   |
 | M1. ESM toolchain            | —         | Phase 1     | `completed`   |
 | M2. Configuration and auth   | Phase 2   | Phase 3     | `completed`   |
-| M3. HTTP ingest vertical     | Phase 4   | Phase 5     | `not-started` |
+| M3. HTTP ingest vertical     | Phase 4   | Phase 5     | `in-progress` |
 | M4. Container runtime        | —         | Phase 6     | `not-started` |
 | M5. Verification and handoff | —         | Phase 7     | `not-started` |
 
@@ -605,16 +616,31 @@ Exit criteria:
 
 ## Phase 4 — HTTP Health and GSI Ingest RED
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `red-expected`
 
-Resolve before starting:
+Completed:
 
-- exact `GET /health` response payload;
-- malformed JSON and unsupported media-type responses;
-- initial request-body size limit and its configuration boundary;
-- stable public JSON error shape for non-`200` responses.
+- Fixed the health, public error, media-type, one-MiB body-limit, correlation-header, and validation-precedence
+  contracts before writing HTTP specs.
+- Added `match` domain, application port/use-case, in-memory adapter, and public API seams without importing Express or
+  GSI transport vocabulary into the module.
+- Added the middleware-oriented application composition in the target order: request context, bounded request logging,
+  JSON parsing, health and GSI routers, not-found handling, and final error mapping.
+- Added intent-driven store and use-case specs for replacement, client isolation, injected receive time, resolved
+  identity, and immutable snapshot ownership.
+- Added Supertest specs for health, correlation, GSI authentication and auth stripping, validation precedence, every
+  fixed error mapping, request-size enforcement, route fallback, and safe logging.
+- Verified type checking, ESLint, Prettier, and the ESM build remain green. The 21 Phase 1–3 assertions remain green;
+  22 Phase 4 assertions fail on the intentional Phase 5 seams.
+
+Resolved before starting:
+
+- `GET /health` returns `200` with `{ "status": "ok" }`;
+- malformed JSON returns `400 INVALID_JSON`; absent or unsupported media type returns `415 UNSUPPORTED_MEDIA_TYPE`;
+- the initial request body limit is `1_048_576` bytes and is injected into `createApp`;
+- non-success responses use `{ "error": { "code": "<CODE>" }`, while `X-Request-Id` carries correlation.
 
 Add RED unit specs for:
 
