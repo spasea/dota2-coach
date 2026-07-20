@@ -1,0 +1,11 @@
+.git
+.codebase-memory
+.codex
+.idea
+**/.env
+**/.env.*
+!**/.env.example
+**/coverage
+**/dist
+**/node_modules
+ops/dev/secrets/**/*.local.yaml
