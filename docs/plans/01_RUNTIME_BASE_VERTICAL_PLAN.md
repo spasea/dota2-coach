@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 2 — Configuration and Authentication RED (not started)`
+- Current implementation phase: `Phase 3 — Configuration and Authentication GREEN (not started)`
 - Last updated: `2026-07-20`
 
 Status values:
@@ -87,14 +87,30 @@ and previously green unrelated coverage remains green.
 31. Local development runs through Docker Compose. Production Kubernetes, KSOPS, Kustomize, GitOps, custom resources,
     rollout, and secret-delivery design are not part of this plan.
 32. This plan is documentation-only. Implementation begins only after the plan status changes to `approved`.
+33. Trusted client configuration is split into two versioned YAML documents joined by a stable `client_id`. The public
+    document contains `client_id` and `default_role`; the private document contains bearer token, Discord user ID, and
+    coach alias.
+34. A `client_id` is a neutral non-sensitive mapping key. It must not contain a player name, Discord identity, bearer
+    credential, or other personal data.
+35. Both documents use `schema_version: 1`. Every public client has exactly one private credential entry; unknown,
+    missing, or duplicate cross-document identities fail startup validation.
+36. The runtime receives the documents through required `CLIENT_CONFIG_PATH` and `CLIENT_CREDENTIALS_PATH` process
+    values, reads them once during startup, and keeps the resulting configuration immutable. Hot reload is excluded.
+37. Each client has one active high-entropy bearer token in this slice. Tokens are secret values rather than YAML keys;
+    duplicate token values are rejected, and only token digests remain in the long-lived lookup registry.
+38. Local public configuration is tracked under `ops/dev/config/runtime/`. A private example is tracked under
+    `ops/dev/secrets/runtime/`, while `*.local.yaml` credentials in that directory are ignored by Git.
+39. Production Kubernetes resources live in a separate GitOps repository and are reconciled by Argo CD with KSOPS and
+    SOPS age encryption. This application repository does not define that contour; production must mount the same two
+    application-level documents and provide their paths.
 
 ## Deferred Decisions
 
 The following decisions are intentionally not guessed in this slice:
 
-1. Repository location and naming for example or real client YAML files.
-2. The exact mechanism that supplies the YAML path or content to the local Compose container.
-3. Production YAML/secret generation, encryption, mounting, rotation, and reconciliation through Kubernetes tooling.
+1. The exact Compose mounts that supply the approved local configuration paths to the runtime container.
+2. Production GitOps repository layout, Kubernetes resources, age key management, rotation, and reconciliation details.
+3. Overlapping bearer credentials for zero-downtime token rotation.
 4. The exact `GET /health` response payload beyond a successful JSON health response.
 5. The response code and public error shape for malformed JSON and unsupported media types.
 6. The default and maximum accepted GSI request-body size.
@@ -195,10 +211,11 @@ Express request and response types do not cross into the GSI use case or store.
 
 Configuration has separate stages:
 
-1. obtain process-level values and a YAML source;
-2. parse YAML syntax;
-3. validate the trusted client mapping;
-4. map it into immutable runtime configuration.
+1. obtain the two required process-level paths and load their YAML text;
+2. parse each YAML document independently;
+3. validate each document's schema and safe field constraints;
+4. join public clients to private credentials and validate cross-document invariants;
+5. map the result into an immutable digest-backed trusted-client registry.
 
 The configuration module must not know about Compose, Kubernetes, KSOPS, or GitOps. Those systems only supply the
 configured source at the process boundary.
@@ -356,7 +373,10 @@ apps/runtime/
 │   ├── platform/
 │   │   ├── config/
 │   │   │   ├── config.types.ts
+│   │   │   ├── configuration-error.ts
+│   │   │   ├── load-runtime-config.spec.ts
 │   │   │   ├── load-runtime-config.ts
+│   │   │   ├── parse-client-config.spec.ts
 │   │   │   └── parse-client-config.ts
 │   │   ├── http/
 │   │   │   ├── create-app.ts
@@ -385,6 +405,7 @@ apps/runtime/
 │   │           └── in-memory-latest-state-store.spec.ts
 │   └── integrations/
 │       └── gsi/
+│           ├── authenticate-gsi-client.spec.ts
 │           ├── authenticate-gsi-client.ts
 │           ├── gsi.router.ts
 │           ├── gsi.router.spec.ts
@@ -409,7 +430,7 @@ created as empty placeholders in this slice. Do not add a generic `recommendatio
 | --- | --- | --- | --- |
 | M0. Contract baseline | — | Phase 0 | `completed` |
 | M1. ESM toolchain | — | Phase 1 | `completed` |
-| M2. Configuration and auth | Phase 2 | Phase 3 | `not-started` |
+| M2. Configuration and auth | Phase 2 | Phase 3 | `in-progress` |
 | M3. HTTP ingest vertical | Phase 4 | Phase 5 | `not-started` |
 | M4. Container runtime | — | Phase 6 | `not-started` |
 | M5. Verification and handoff | — | Phase 7 | `not-started` |
@@ -492,31 +513,49 @@ Exit criteria:
 
 ## Phase 2 — Configuration and Authentication RED
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `red-expected`
 
-Resolve before starting:
+Completed:
 
-- the process-boundary input used to identify the YAML source for local runtime execution;
-- the minimum client entry fields required in this slice;
-- whether duplicate bearer tokens are structurally impossible or explicitly rejected after YAML parsing.
+- Fixed the versioned public/private YAML contract, privacy split, startup-only loading, join invariants, and one-token
+  MVP policy without adding Kubernetes vocabulary to runtime source.
+- Added tracked local public configuration and private example files plus a narrow ignore rule for local credentials.
+- Added immutable trusted-client boundary types and a safe configuration-error representation.
+- Added compile-safe seams for two-file source loading, configuration parsing/registry construction, and GSI client
+  authentication.
+- Added intent-driven RED specs covering source loading, safe immutable identity resolution, syntax and semantic
+  failures, cross-document joins, uniqueness, and indistinguishable missing/unknown authentication.
+- Verified type checking, ESLint, Prettier, and the ESM build remain green; the Phase 1 regression spec remains green;
+  14 new Phase 2 assertions fail on the three intentionally unimplemented Phase 3 seams.
+
+Resolved before starting:
+
+- `CLIENT_CONFIG_PATH` and `CLIENT_CREDENTIALS_PATH` identify separate public and private YAML sources;
+- public clients contain stable neutral `client_id` mapping keys and `default_role`;
+- private credentials contain bearer token, Discord user ID, and coach alias under the corresponding `client_id`;
+- bearer tokens are YAML values, so duplicate token values are explicitly rejected after parsing;
+- startup-only loading, one active token per client, and digest-backed long-lived lookup are fixed for this slice;
+- local public values and private example files are tracked, while local plaintext credentials are ignored;
+- Kubernetes, Argo CD, KSOPS, SOPS age, and production repository implementation remain outside this app-repo phase.
 
 Add RED specs for:
 
-- valid YAML client configuration maps tokens to immutable trusted client identities;
+- valid public and private YAML documents join into immutable trusted client identities;
 - invalid YAML syntax fails with a configuration error that does not expose file contents;
-- missing clients, invalid client entries, invalid roles, and empty tokens fail startup validation;
+- missing clients, mismatched document versions, invalid client entries, invalid roles, empty tokens, incomplete joins,
+  duplicate Discord identities, and duplicate token values fail startup validation;
 - a missing or unknown bearer token produces the same authentication result;
 - token lookup does not return or log the original credential;
 - configuration output cannot be mutated through a caller-owned input reference.
 
 Add compile-safe seams for:
 
-- YAML text loading at the process boundary;
-- YAML parsing;
+- two-file YAML text loading at the process boundary;
+- independent public/private YAML parsing;
 - Zod-backed semantic validation;
-- trusted client lookup;
+- cross-document joining and digest-backed trusted client lookup;
 - safe configuration-error representation.
 
 Exit criteria:
