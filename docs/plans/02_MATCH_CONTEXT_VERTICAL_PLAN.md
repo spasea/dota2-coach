@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 5 — Compact Memory and Coach Context RED (not-started)`
+- Current implementation phase: `Phase 6 — Compact Memory and Coach Context GREEN (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -171,10 +171,12 @@ second ingest path.
     Dynamic visibility and position still come only from the freshest current snapshot.
 51. Enemy hero memory stores first seen, last seen, last known position, and current visibility. Last-seen age and
     trajectory-sensitive facts are usable only with a healthy timeline.
-52. Duplicate/illusion-like minimap markers do not create duplicate roster heroes. Primary hero selection must be
-    deterministic and conservative; uncertain copies may be ignored rather than asserted as real heroes.
+52. Duplicate/illusion-like minimap markers do not create duplicate roster heroes. When one frame contains multiple
+    positioned observations for the same hero, the observation is ambiguous: it does not update that hero's
+    last-seen time, position, or visibility. Primary hero selection must remain deterministic and conservative.
 53. Each connected player has a client-owned temporal sample ring retaining at most the latest `90_000` milliseconds,
-    pruned by monotonic receive time rather than snapshot count.
+    pruned by monotonic receive time rather than snapshot count. Retention is half-open: a sample exactly `90_000`
+    milliseconds old is pruned.
 54. Player history contains only normalized continuous values required by the MVP: game time, position, alive,
     HP/mana percent, level, XP, gold, last hits, denies, GPM/XPM, and confirmed cumulative income counters.
 55. Current gold delta is not labelled farm income because purchases reduce gold. Temporal consumers use the available
@@ -183,6 +185,7 @@ second ingest path.
     continuity-sensitive trends. A gap is not interpreted as continuous movement, farming, resource loss, or death.
 57. Building memory records the source baseline and health changes only. Initial decision windows are `6_000`,
     `15_000`, and `30_000` milliseconds for active damage, recent damage, and pressure context respectively.
+    Windows are half-open: an event exactly on a window boundary is outside that window.
 58. Building window values are injected domain policy values and validated in increasing order. Their initial defaults
     come from the MVP evidence; they are not universal Dota invariants.
 59. Health increases update the building baseline but are not pressure. Missing building sections do not imply that all
@@ -213,11 +216,13 @@ second ingest path.
     is idempotent, permits duplicate roles across players, and is cleared with the session.
 70. The slice exposes an internal public `match` command for setting the requester's own role override. Authorization
     and Discord button mapping remain future integration concerns; callers cannot set another identity implicitly.
-71. Temporal features expose factual availability and timeline status. When the shared timeline is stale or
-    rebaselining,
+71. `CoachContext` keeps one structurally stable full shape. Each meaningful temporal feature carries its own factual
+    availability instead of making the whole context partial. When the shared timeline is stale or rebaselining,
     continuity-dependent fields are absent and an explicit unknown code is returned; values are never silently reused
     as current facts. Independently continuous requester/player trends may remain available when their own client ring
-    has no gap.
+    has no gap. Capability-level unknowns are deduplicated and deterministically ordered from this fixed vocabulary:
+    `partial_team_coverage`, `timeline_stale`, `timeline_rebaselining`, `requester_history_unavailable`,
+    `building_history_unavailable`, and `enemy_observation_ambiguous`.
 72. No coarse map geometry, action classification, scoring, hysteresis, recommendation rendering, or generic scoring
     abstraction is implemented here.
 
@@ -551,13 +556,13 @@ generic manager, and do not create empty future module directories.
 
 ## Milestone Status
 
-| Milestone                               | RED phase | GREEN phase | Status        |
-| --------------------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline                   | —         | Phase 0     | `completed`   |
-| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `completed`   |
-| M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `completed`   |
-| M3. Compact memory and coaching context | Phase 5   | Phase 6     | `not-started` |
-| M4. Verification and handoff            | —         | Phase 7     | `not-started` |
+| Milestone                               | RED phase | GREEN phase | Status         |
+| --------------------------------------- | --------- | ----------- | -------------- |
+| M0. Contract baseline                   | —         | Phase 0     | `completed`    |
+| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `completed`    |
+| M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `completed`    |
+| M3. Compact memory and coaching context | Phase 5   | Phase 6     | `red-expected` |
+| M4. Verification and handoff            | —         | Phase 7     | `not-started`  |
 
 ## Phase 0 — Contract Baseline
 
@@ -853,9 +858,23 @@ Exit criteria:
 
 ## Phase 5 — Compact Memory and Coach Context RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
+
+Completed:
+
+- Added immutable contracts for the atomic active-match aggregate, compact map/hero/player/building/event memories,
+  role overrides, the structurally stable coaching context, feature-level availability, and deterministic unknowns.
+- Added compile-safe application seams for building coaching context and setting the requester's match-scoped role
+  override. Runtime composition and the Phase 4 session store remain intentionally unchanged until Phase 6.
+- Added reducer specs for baseline safety, conservative ambiguous hero observations, half-open player retention and
+  building windows, source continuity, and canonical cross-client event deduplication.
+- Added query and command specs for every explicit context failure, deterministic current-state selection and
+  coverage, immutable ready results, partial feature availability, effective-role resolution, idempotent overrides,
+  duplicate-role allowance, and rollover reset.
+- Verified the pre-Phase-5 regression remains green with 13 suites and 84 tests. The six new suites compile and fail
+  only at the intentional behavior seams: 19 expected failures and 5 contract/fixture assertions already passing.
 
 Add compile-safe seams and failing specs for:
 
