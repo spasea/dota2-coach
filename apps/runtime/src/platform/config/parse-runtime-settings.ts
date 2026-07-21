@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+import { SUPPORTED_COACH_LOCALES, type CoachLocale } from '../i18n/locale.js';
 import { ConfigurationError } from './configuration-error.js';
 
 const runtimeSettingsSchema = z.object({
   CLIENT_CONFIG_PATH: z.string().trim().min(1),
   CLIENT_CREDENTIALS_PATH: z.string().trim().min(1),
+  COACH_LOCALE: z.enum(SUPPORTED_COACH_LOCALES),
   LOST_POLICY_PATH: z.string().trim().min(1),
   GSI_FRESHNESS_MS: z.coerce.number().int().positive().default(5000),
   HOST: z.string().trim().min(1).default('0.0.0.0'),
@@ -17,6 +19,7 @@ export type RuntimeLogLevel = z.infer<typeof runtimeSettingsSchema>['LOG_LEVEL']
 export type RuntimeSettings = Readonly<{
   clientConfigPath: string;
   clientCredentialsPath: string;
+  coachLocale: CoachLocale;
   lostPolicyPath: string;
   gsiFreshnessMs: number;
   host: string;
@@ -34,6 +37,7 @@ export function parseRuntimeSettings(environment: Readonly<Record<string, string
   return Object.freeze({
     clientConfigPath: result.data.CLIENT_CONFIG_PATH,
     clientCredentialsPath: result.data.CLIENT_CREDENTIALS_PATH,
+    coachLocale: result.data.COACH_LOCALE,
     lostPolicyPath: result.data.LOST_POLICY_PATH,
     gsiFreshnessMs: result.data.GSI_FRESHNESS_MS,
     host: result.data.HOST,

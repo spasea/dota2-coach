@@ -129,6 +129,7 @@ try {
     ...process.env,
     CLIENT_CONFIG_PATH: clientConfigPath,
     CLIENT_CREDENTIALS_PATH: clientCredentialsPath,
+    COACH_LOCALE: 'ru',
     LOST_POLICY_PATH: lostPolicyPath,
     HOST: '127.0.0.1',
     LOG_LEVEL: 'info',

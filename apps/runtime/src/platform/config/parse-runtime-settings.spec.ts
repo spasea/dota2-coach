@@ -6,6 +6,7 @@ import { parseRuntimeSettings } from './parse-runtime-settings.js';
 const requiredEnvironment = {
   CLIENT_CONFIG_PATH: '/etc/dota2-coach/clients.yaml',
   CLIENT_CREDENTIALS_PATH: '/run/secrets/dota2-coach/client-credentials.yaml',
+  COACH_LOCALE: 'ru',
   LOST_POLICY_PATH: '/etc/dota2-coach/lost-policy.yaml',
 };
 
@@ -16,6 +17,7 @@ describe('runtime process settings', () => {
     expect(settings).toEqual({
       clientConfigPath: requiredEnvironment.CLIENT_CONFIG_PATH,
       clientCredentialsPath: requiredEnvironment.CLIENT_CREDENTIALS_PATH,
+      coachLocale: 'ru',
       lostPolicyPath: requiredEnvironment.LOST_POLICY_PATH,
       gsiFreshnessMs: 5000,
       host: '0.0.0.0',
@@ -40,6 +42,9 @@ describe('runtime process settings', () => {
   it.each([
     ['missing public config path', { CLIENT_CREDENTIALS_PATH: requiredEnvironment.CLIENT_CREDENTIALS_PATH }],
     ['blank private config path', { ...requiredEnvironment, CLIENT_CREDENTIALS_PATH: ' ' }],
+    ['missing coach locale', { ...requiredEnvironment, COACH_LOCALE: undefined }],
+    ['unsupported coach locale', { ...requiredEnvironment, COACH_LOCALE: 'en' }],
+    ['regional locale alias', { ...requiredEnvironment, COACH_LOCALE: 'ru-RU' }],
     ['missing Lost policy path', { ...requiredEnvironment, LOST_POLICY_PATH: undefined }],
     ['invalid port', { ...requiredEnvironment, PORT: 'not-a-port' }],
     ['zero port', { ...requiredEnvironment, PORT: '0' }],

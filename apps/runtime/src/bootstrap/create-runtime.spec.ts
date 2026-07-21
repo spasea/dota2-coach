@@ -10,6 +10,7 @@ const knownGsiToken = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const environment = {
   CLIENT_CONFIG_PATH: '/etc/dota2-coach/clients.yaml',
   CLIENT_CREDENTIALS_PATH: '/run/secrets/dota2-coach/client-credentials.yaml',
+  COACH_LOCALE: 'ru',
   LOST_POLICY_PATH: '/etc/dota2-coach/lost-policy.yaml',
   HOST: '127.0.0.1',
   LOG_LEVEL: 'silent',

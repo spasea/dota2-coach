@@ -55,7 +55,7 @@ The current context deliberately stops at factual match state. It does not yet p
 requester readiness needed by Lost: respawn/buyback details, disable status, or TP readiness. It normalizes minimap
 heroes but not structure markers, so building pressure cannot yet be spatially associated with visible heroes.
 `BuildingPressure` exposes damage totals but not repeated-damage evidence or last-damage age. No coarse map model,
-Lost signals, action candidates, scoring, confidence policy, deterministic Russian renderer, or advice memory exists.
+Lost signals, action candidates, scoring, confidence policy, deterministic localized renderer, or advice memory exists.
 
 This plan extends the existing factual boundary narrowly and adds a sibling `modules/lost` capability. It does not
 replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
@@ -69,7 +69,7 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 2. The vertical remains inside the existing runtime modular monolith. It does not create another process, package,
    service, container, database, worker, scheduler, or external API.
 3. `modules/lost` owns Lost-specific derived signals, hard gates, action candidates, weights, scores, confidence,
-   guardrails, deterministic Russian rendering, and advice stability.
+   guardrails, typed presentation messages, locale catalogs, deterministic rendering, and advice stability.
 4. `modules/match` continues to own normalized factual game state, current client state, active-session lifecycle,
    compact temporal memory, coverage, and factual context queries. It does not acquire recommendation concepts.
 5. `integrations/gsi` remains the only owner of raw GSI fields. It may map additional explicitly consumed current facts
@@ -253,7 +253,8 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     low-confidence command.
 75. Partial team coverage lowers only the features that depend on exact teammate state. It does not automatically lower
     exact local `RESET` evidence.
-76. Each non-zero contribution has a stable reason code, factual value, signed contribution, and Russian explanation.
+76. Each non-zero contribution has only a stable reason code, factual value, and signed contribution. Localized copy is
+    resolved later from a typed message key and parameters; domain candidates never store rendered explanations.
 77. Blockers, unknowns, reasons, penalties, and guardrails are immutable and deterministically ordered.
 78. The primary result includes at most the two strongest user-facing reasons. Full deterministic breakdown remains in
     text/result data for the future adapter.
@@ -262,12 +263,13 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 80. Exact decision numbers live in a validated public Lost policy document. Phase 1–2 introduces only factual-context
     thresholds; scoring, confidence, and stability numbers are added before the first runtime recommendation consumer
     exists. Russian wording is mapped from stable reason/action codes in `lost` and is not embedded in the numeric
-    policy.
+    policy. The application presentation layer maps those codes to typed message keys; locale catalogs own wording.
 
 ### Configuration and GitOps boundary
 
 81. Lost policy is a tracked, non-secret, versioned YAML document loaded once during startup through required process
-    setting `LOST_POLICY_PATH`.
+    setting `LOST_POLICY_PATH`. The short application locale is selected independently through required
+    `COACH_LOCALE`; the only supported value in this slice is `ru`.
 82. Local development tracks `ops/dev/config/runtime/lost-policy.yaml`. Production may mount the equivalent public
     document from the separate GitOps repository.
 83. The application repository does not add Kubernetes, Kustomize, KSOPS, SOPS, Argo CD, or production manifests.
@@ -275,7 +277,8 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     non-finite values, negative radii, non-positive or inverted map-depth dimensions, invalid structure-risk
     percentages, or an invalid repeated-damage count fail startup before port binding through the established
     configuration-error path.
-    Missing `LOST_POLICY_PATH` is `process/validation`; file-read, YAML, and semantic failures are respectively
+    Missing or unsupported `COACH_LOCALE` and missing `LOST_POLICY_PATH` are `process/validation`; no locale fallback
+    is applied. File-read, YAML, and semantic failures are respectively
     `lost_policy/source`, `lost_policy/syntax`, and `lost_policy/validation`.
     Phase 3–4 extends it with readiness-signal thresholds; Phase 5–6 extends it atomically with the
     scoring/confidence/stability fields.
@@ -457,8 +460,7 @@ Pure Lost domain functions own:
 - candidate generation and deterministic tie-breaking;
 - score contributions and confidence classification;
 - hysteresis compatibility and stability contribution;
-- reason/unknown/guardrail selection;
-- deterministic Russian rendering.
+- reason/unknown/guardrail selection.
 
 Functions receive immutable context projections, policy, previous advice, and explicit monotonic time. They do not call
 stores, clocks, loggers, config loaders, or integrations.
@@ -476,10 +478,18 @@ The in-memory adapter implements a narrow Lost-owned port. It may use a `Map` ke
 owned immutable values. It cannot store full context or hide match invalidation/hysteresis rules inside generic
 `save` behavior.
 
-### Renderer boundary
+### Presentation, translation, and renderer boundary
 
-The renderer receives selected candidate facts, confidence, unknowns, and guardrails. It maps stable codes to concise
-Russian voice/text output. It does not recompute scores, access raw context, invent game facts, or use an LLM.
+The application presentation builder receives selected candidate facts, confidence, unknowns, and guardrails and
+maps stable domain codes to typed `{ key, params }` messages. The infrastructure locale catalog maps those messages
+to copy; the renderer only composes translated voice/text output. None of these steps recomputes scores, accesses raw
+context, invents game facts, or uses an LLM.
+
+`LostTranslationKey` is a closed TypeScript union derived from the parameter map. Every catalog must satisfy the full
+mapped type, so a new reason/action/guardrail cannot silently omit its translation. Catalogs are TypeScript modules,
+not YAML and not policy data. Russian count-sensitive messages use native `Intl.PluralRules('ru')`; no i18n package is
+introduced for the single-locale MVP. Adding a locale later means adding its short key, exhaustive catalog, and
+factory registration. Runtime wiring chooses the translator from `RuntimeSettings.coachLocale` in Phase 6.
 
 ### Time boundary
 
@@ -591,6 +601,7 @@ type LostReasonCode =
   | "requester_low_mana"
   | "requester_disabled"
   | "active_structure_damage"
+  | "recent_structure_damage"
   | "repeated_structure_damage"
   | "critical_structure"
   | "requester_already_near_structure"
@@ -603,18 +614,17 @@ type LostReasonCode =
   | "confirmed_allied_cluster"
   | "partial_evidence";
 
-type LostScoreContribution = Readonly<{
+type LostScoreTerm = Readonly<{
   code: LostReasonCode;
   value: number | string | boolean;
   contribution: number;
-  explanation: string;
 }>;
 
 type ScoredLostCandidate = Readonly<{
   action: LostAction;
   score: number;
-  reasons: readonly LostScoreContribution[];
-  penalties: readonly LostScoreContribution[];
+  reasons: readonly LostScoreTerm[];
+  penalties: readonly LostScoreTerm[];
   blockers: readonly string[];
   unknowns: readonly LostUnknown[];
   guardrails: readonly LostGuardrail[];
@@ -635,6 +645,13 @@ type LostRecommendation = Readonly<{
 ```
 
 `HOLD_AND_WAIT` has `primary: null` and `alternative: null` because it is a hard-gate outcome, not a scored candidate.
+
+Domain values stop at `LostScoreTerm`. The application layer represents user-facing semantics as a
+discriminated `LostMessage` union keyed by short values such as `lost.action.reset` and
+`lost.reason.requester_would_arrive_outnumbered`, with typed parameters such as `enemyCount`. Application specs assert
+keys, parameters, ordering, and composition; they do not assert exact Russian sentences. Infrastructure specs verify
+catalog completeness through TypeScript and exercise non-empty output and Russian plural categories without pinning
+whole phrases.
 
 ### Application result
 
@@ -705,7 +722,7 @@ BuildCoachContextResult
              └─ yes → primary + optional alternative
                          │
                          ▼
-                deterministic Russian rendering
+          typed presentation + locale rendering
 ```
 
 Candidate tie-breaking is fixed and documented rather than relying on sort stability. The exact precedence is resolved
@@ -799,6 +816,83 @@ Phase 6 extends the parser and tracked YAML atomically with those sections, incl
 `stability.hysteresis_ms: 30000`, before wiring `recommendLostAction`. These are deliberate completions of the same
 pre-release `schema_version: 1`, not compatibility-bearing schema migrations. Phase 1–2 must not invent placeholder
 readiness or scoring sections merely to anticipate those extensions.
+
+Phase 5 fixes the following decision-policy extension. Zero bases are deliberate: only `FARM_SAFELY` has a
+conservative fallback prior, while every other action requires positive factual evidence.
+
+```yaml
+scoring:
+  action_bases:
+    RESET: 0
+    DEFEND: 0
+    REGROUP: 0
+    FARM_SAFELY: 20
+  contributions:
+    RESET:
+      requester_low_health: 70
+      requester_low_mana: 15
+      requester_disabled: 45
+    DEFEND:
+      active_structure_damage: 40
+      recent_structure_damage: 20
+      repeated_structure_damage: 15
+      critical_structure: 25
+      requester_already_near_structure: 15
+      requester_can_teleport: 10
+      allied_defenders_already_present: 15
+      requester_would_arrive_outnumbered: -55
+      partial_evidence: -10
+    REGROUP:
+      requester_deep_and_isolated: 35
+      enemies_missing: 15
+      confirmed_allied_cluster: 30
+      partial_evidence: -10
+    FARM_SAFELY:
+      requester_would_arrive_outnumbered: 35
+      requester_deep_and_isolated: 25
+      enemies_missing: 20
+      enemies_visible_elsewhere: 25
+
+confidence:
+  medium_score_floor: 20
+  high_score_floor: 65
+  alternative_score_gap: 15
+
+stability:
+  hysteresis_ms: 30000
+  previous_action_bonus: 5
+```
+
+The decision-policy document is strict and owns exactly the listed action/reason keys. Bases and floors are finite
+non-negative integers; contribution weights are finite non-zero integers with the signs shown above. The high floor
+is strictly greater than the medium floor, the alternative gap is non-negative, hysteresis is a positive integer,
+and the previous-action bonus is positive and strictly smaller than the alternative gap. Phase 6 adds these sections
+atomically to the canonical parser and tracked YAML; Phase 5 only fixes their contract and RED coverage.
+
+Score ranks already eligible candidates and does not determine evidence quality by itself. `medium` requires the
+action-specific evidence predicate and `score >= 20`; `high` additionally requires `score >= 65` and direct,
+non-contradicted decision-critical facts. Exact local low-health `RESET` may be high under partial team coverage.
+`DEFEND` may be high only with current active pressure, reachable arrival, acceptable numerical risk, no uncertain
+support, and unambiguous enemy observation. `REGROUP` may be high only for a deep/isolated requester with a confirmed
+cluster containing a fresh connected member and a non-unknown destination. `FARM_SAFELY` is capped at medium in this
+slice. Low mana alone cannot make `RESET` reach the medium floor, while the deliberate `FARM_SAFELY` base prevents it
+from creating `HOLD_AND_WAIT`.
+
+Exact score ties use `FARM_SAFELY`, `RESET`, `REGROUP`, `DEFEND` precedence. An alternative must be eligible, reach
+medium confidence, and have an inclusive score gap of at most `15` from the primary. Voice output contains at most
+two strongest reasons; detailed text retains the full deterministic breakdown.
+
+Hysteresis applies only for `0 <= age < 30_000` milliseconds, adds `5` to the still-eligible previous action, and is
+ignored at the exact upper boundary or for a negative age. Its stable context key contains categorical readiness,
+map-depth/isolation, missing-enemy count, relevant structure risk/activity, arrival/numerical/defense response,
+selected-cluster identity/risk, and decision-critical unknowns. It excludes exact HP, coordinates, damage age, raw
+context, and rendered text. Match/team mismatch, a changed categorical key, a hard hold, newly feasible critical
+defense, newly unsafe defense, readiness collapse, or material visibility/safety change bypasses the bonus.
+
+The initial `ru` copy is deterministic, short, informal second-person text. `recent_structure_damage` is distinct
+from `active_structure_damage`; the presentation mapping never upgrades recent evidence into a current-damage claim.
+Voice reasons, text reasons, penalties, unknowns, and guardrails are mapped from stable codes rather than numeric
+policy values or embedded domain strings.
 
 ### Phase 1 Fixture Evidence and First Defaults
 
@@ -934,12 +1028,15 @@ apps/runtime/src/
 │   └── lost/
 │       ├── public.ts
 │       ├── application/
+│       │   ├── build-lost-presentation.spec.ts
+│       │   ├── build-lost-presentation.ts
 │       │   ├── lost-advice-store.ts
+│       │   ├── lost-translator.ts
 │       │   ├── recommend-lost-action.spec.ts
-│       │   └── recommend-lost-action.ts
+│       │   ├── recommend-lost-action.ts
+│       │   ├── render-lost-recommendation.spec.ts
+│       │   └── render-lost-recommendation.ts
 │       ├── domain/
-│       │   ├── advice-stability.spec.ts
-│       │   ├── advice-stability.ts
 │       │   ├── candidate.ts
 │       │   ├── confidence.ts
 │       │   ├── derive-lost-signals.spec.ts
@@ -948,19 +1045,26 @@ apps/runtime/src/
 │       │   ├── map-depth.spec.ts
 │       │   ├── map-depth.ts
 │       │   ├── recommendation.ts
-│       │   ├── render-lost-recommendation.spec.ts
-│       │   ├── render-lost-recommendation.ts
-│       │   ├── score-lost-candidates.spec.ts
-│       │   └── score-lost-candidates.ts
+│       │   ├── scoring.spec.ts
+│       │   ├── scoring.ts
+│       │   ├── select-recommendation.spec.ts
+│       │   ├── select-recommendation.ts
+│       │   ├── stability.spec.ts
+│       │   └── stability.ts
 │       └── infrastructure/
+│           ├── create-lost-translator.ts
 │           ├── in-memory-lost-advice-store.spec.ts
 │           ├── in-memory-lost-advice-store.ts
 │           ├── parse-lost-policy.spec.ts
-│           └── parse-lost-policy.ts
+│           ├── parse-lost-policy.ts
+│           ├── russian-lost-translator.spec.ts
+│           └── russian-lost-translator.ts
 └── platform/
-    └── config/
-        ├── parse-runtime-settings.spec.ts
-        └── parse-runtime-settings.ts
+    ├── config/
+    │   ├── parse-runtime-settings.spec.ts
+    │   └── parse-runtime-settings.ts
+    └── i18n/
+        └── locale.ts
 
 ops/dev/config/runtime/
 └── lost-policy.yaml
@@ -971,13 +1075,13 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 
 ## Milestone Status
 
-| Milestone                                    | RED phase | GREEN phase | Status        |
-| -------------------------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline                        | —         | Phase 0     | `completed`   |
-| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`   |
-| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed`   |
-| M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `not-started` |
-| M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
+| Milestone                                    | RED phase | GREEN phase | Status         |
+| -------------------------------------------- | --------- | ----------- | -------------- |
+| M0. Contract baseline                        | —         | Phase 0     | `completed`    |
+| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`    |
+| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed`    |
+| M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `red-expected` |
+| M4. Verification and handoff                 | —         | Phase 7     | `not-started`  |
 
 ## Phase 0 — Contract Baseline
 
@@ -1026,7 +1130,7 @@ Completed:
 - Approved mirrored coarse map depth, factual spatial association, and no marker union, polygons, or pathfinding.
 - Approved pressure/feasibility separation, outer-structure suicide blockers, and the Ancient last-stand exception.
 - Confirmed that remote connected teammates improve evidence but never become inferred defenders or advice recipients.
-- Approved high/medium confidence semantics, no low-confidence directional action, deterministic Russian rendering,
+- Approved high/medium confidence semantics, no low-confidence directional action, deterministic localized rendering,
   guardrails, and an optional eligible alternative.
 - Approved the public startup-loaded Lost YAML policy and `30_000 ms` requester-scoped hysteresis.
 - Confirmed the fixture/scenario baseline and exclusions for Discord, TTS, team coordination, objective races, event
@@ -1355,9 +1459,48 @@ Exit criteria:
 
 ## Phase 5 — Scoring, Rendering, and Stability RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
+
+Completed:
+
+- Fixed the exact action bases, action-scoped signed reason weights, medium/high score floors, inclusive alternative
+  gap, safer-action tie precedence, `30_000 ms` half-open hysteresis window, and `5`-point compatible-action bonus.
+- Added `recent_structure_damage` as a distinct stable reason code so recent evidence is never rendered or scored as
+  active damage.
+- Fixed action-specific confidence predicates: local exact low-health `RESET` remains high under partial coverage;
+  exact feasible `DEFEND` and connected safe-cluster `REGROUP` may reach high; `FARM_SAFELY` is capped at medium; no
+  directional candidate below the medium floor is emitted.
+- Fixed categorical context-key compatibility, exact score-tie and alternative selection semantics, deterministic
+  short informal initial `ru` copy, the two-reason voice limit, detailed text breakdowns, and prohibited future-state
+  or attacker semantics.
+- Added required strict `COACH_LOCALE` process configuration with short keys, only `ru` in the initial registry, and
+  no implicit fallback. Local Compose and built-runtime smoke configuration use `ru` explicitly.
+- Split domain scoring terms from localized copy. The application presentation seam now produces typed
+  `{ key, params }` messages, the exhaustive TypeScript catalog owns Russian wording and pluralization, and the
+  renderer receives an injected translator.
+- Replaced exact Russian sentence assertions in application specs with stable key/parameter/composition assertions;
+  catalog specs cover non-empty translations and Russian plural categories without pinning whole phrases.
+- Added final reusable decision-policy subtypes without making them premature required fields of canonical
+  `LostPolicy`; the parser and tracked YAML remain intentionally unchanged until Phase 6.
+- Added compile-safe seams for scoring, confidence, selection, categorical keys, stability, presentation building,
+  localized rendering,
+  requester-scoped advice storage, and the application recommendation use case. Each seam fails explicitly with a
+  bounded `not implemented` error rather than returning fabricated neutral behavior.
+- Added RED intent specs covering exact policy parsing/validation, all approved scoring and confidence cases,
+  blocker-first filtering, immutable deterministic breakdowns, safer tie precedence, inclusive alternatives,
+  categorical compatibility, hysteresis boundaries/bypass, bounded immutable storage, typed presentation mapping,
+  localized output, requester-scoped orchestration, unavailable/hold mapping, and safe decision metadata.
+
+Verification evidence (`2026-07-21`):
+
+- `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test:smoke` — passed;
+- locale parsing and Russian catalog infrastructure pass separately: `2` suites / `21` tests;
+- all original parser-contract assertions pass separately: `15` passed;
+- full Jest run is intentional RED: `10` suites / `50` assertions fail only on the explicit Phase 6 seams or the
+  absent decision-policy parser extension; `24` suites / `237` tests pass;
+- no runtime wiring, public Lost API, Discord, HTTP route, TTS, timer, or proactive delivery was added.
 
 Resolve before writing RED specs:
 
@@ -1369,7 +1512,8 @@ Resolve before writing RED specs:
 - confidence calculation and exact medium/high boundaries;
 - compatible versus materially changed Lost context-key fields;
 - maximum voice reasons and deterministic alternative eligibility;
-- Russian copy for actions, approved reason codes, guardrails, hold cases, and unknowns.
+- initial `ru` copy for actions, approved reason codes, guardrails, hold cases, and unknowns;
+- typed message-key/parameter mapping and strict runtime locale selection.
 
 Add compile-safe seams and failing specs for:
 
@@ -1381,7 +1525,7 @@ Add compile-safe seams and failing specs for:
 - medium confidence for conservative cross-map safe-farm advice;
 - no low-confidence directional output;
 - primary and optional eligible alternative;
-- deterministic Russian voice and detailed text output;
+- deterministic typed presentation plus localized voice and detailed text output;
 - conditional guardrail rendering without future-state claims;
 - prohibited wording around attacker, enemy tower HP/DPS, guaranteed defense, and teammate intent;
 - one bounded advice entry per client;
@@ -1411,7 +1555,8 @@ Implement:
 - pure policy-driven scoring and safe deterministic tie-breaking;
 - confidence classification and alternative selection;
 - stable reason, penalty, blocker, unknown, and guardrail breakdowns;
-- deterministic Russian renderer;
+- deterministic presentation builder and locale-aware renderer;
+- `COACH_LOCALE` translator selection at the composition root;
 - bounded requester advice store;
 - compatibility-aware hysteresis with urgent bypass;
 - `recommendLostAction` application use case;
