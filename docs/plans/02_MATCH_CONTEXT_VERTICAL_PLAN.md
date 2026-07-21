@@ -2,9 +2,9 @@
 
 ## Status
 
-- Plan status: `draft`
+- Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Plan review`
+- Current implementation phase: `Phase 1 — Normalization and Client State RED (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -82,8 +82,9 @@ second ingest path.
 12. Normalized domain names express game meaning rather than raw wire spelling. For example, `matchId`, `teamSlot`,
     and `position` belong to the normalized contract; `map.matchid`, `player.team_slot`, and `xpos/ypos` remain GSI
     adapter knowledge.
-13. The minimum normalized snapshot contains nullable match lifecycle facts, the local player and hero sample when
-    usable, current minimap hero observations, local-team building observations, and normalized non-chat events.
+13. The minimum normalized snapshot contains nullable source timestamp and match lifecycle facts, the local player and
+    hero sample when usable, current minimap hero observations, local-team building observations, and normalized
+    non-chat events.
 14. `matchId` remains a string. It is usable only when non-empty; it is never coerced through JavaScript number types.
 15. Team normalization accepts only the confirmed Radiant/Dire representations. Unknown values become `null`; the
     application does not guess a team from client configuration or hero position.
@@ -92,8 +93,9 @@ second ingest path.
     zero-valued history.
 17. Minimap object keys such as `o0` are frame-local indexes and never become entity IDs.
 18. Raw chat messages are discarded during normalization and are not stored, fingerprinted, or logged.
-19. Unsupported providers, raw `previously`/`added`, wearables, league, draft, couriers, neutral items, lane creeps,
-    wards, abilities, and complete item history remain outside this slice.
+19. Except for a finite numeric `provider.timestamp` mapped to normalized source metadata, provider fields, raw
+    `previously`/`added`, wearables, league, draft, couriers, neutral items, lane creeps, wards, abilities, and complete
+    item history remain outside this slice.
 20. Latest client state is canonically keyed by stable `clientId`. Unique `discordUserId` remains a query identity;
     the in-memory implementation may maintain an index but must not duplicate mutable client state.
 21. Replacing one client's latest state does not mutate another client's state. Stored state remains immutable from a
@@ -391,6 +393,7 @@ type Role = 1 | 2 | 3 | 4 | 5;
 type TimelineStatus = "healthy" | "stale" | "rebaselining";
 
 type NormalizedClientSnapshot = Readonly<{
+  sourceTimestampSeconds: number | null;
   match: NormalizedMatchFacts | null;
   player: NormalizedPlayerFacts | null;
   hero: NormalizedHeroFacts | null;
@@ -441,6 +444,13 @@ type CoachContext = Readonly<{
 
 Collections exposed by public results are immutable and deterministically ordered. Sets, maps, mutable ring buffers,
 and internal baselines do not cross the public boundary.
+
+Normalization uses one absence convention across the public input contract:
+
+- an absent or unusable singleton section/scalar fact is `null`, not `undefined`;
+- an absent collection is an empty readonly array;
+- only finite JSON numbers are accepted as numeric facts; numeric-looking strings are not coerced;
+- `sourceTimestampSeconds` is diagnostic metadata and never participates in freshness or cross-client ordering.
 
 ## Lifecycle and Timeline State Machine
 
@@ -543,7 +553,7 @@ generic manager, and do not create empty future module directories.
 
 | Milestone                               | RED phase | GREEN phase | Status        |
 | --------------------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline                   | —         | Phase 0     | `not-started` |
+| M0. Contract baseline                   | —         | Phase 0     | `completed`   |
 | M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `not-started` |
 | M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `not-started` |
 | M3. Compact memory and coaching context | Phase 5   | Phase 6     | `not-started` |
@@ -551,7 +561,7 @@ generic manager, and do not create empty future module directories.
 
 ## Phase 0 — Contract Baseline
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
 
@@ -567,7 +577,17 @@ Confirm and record:
 - match-scoped role override and internal-only context query;
 - the absence of a public debug endpoint.
 
-Prepare deterministic sanitized fixtures for:
+Completed:
+
+- Approved the internal Match Context Vertical and its module ownership boundaries.
+- Confirmed unchanged GSI HTTP behavior and tolerant nested normalization.
+- Confirmed the normalized minimum field families against the GSI report.
+- Confirmed `5000 ms` freshness, monotonic age, and the exact stale boundary.
+- Confirmed one active session, first-client sticky source, source-controlled rollover, no failover, and rebaselining.
+- Confirmed compact memory retention/window defaults, match-scoped role override, and internal-only context query.
+- Confirmed that no public debug endpoint, external integration, scoring engine, or persistence enters this slice.
+
+Confirmed the following deterministic sanitized fixture scenarios for Phase 1:
 
 - heartbeat/no match;
 - pre-game baseline with valid match/team;
@@ -581,7 +601,8 @@ Prepare deterministic sanitized fixtures for:
 Exit criteria:
 
 - The plan is changed from `draft` to `approved` before Phase 1 implementation starts.
-- Fixtures contain no auth token, Discord identity, player name, raw chat, or other unnecessary personal data.
+- Fixture requirements prohibit auth tokens, Discord identities, player names, raw chat, and other unnecessary personal
+  data.
 - No unresolved decision blocks normalization RED specs.
 
 ## Phase 1 — Normalization and Client State RED
@@ -590,8 +611,43 @@ Status: `not-started`
 
 Target end state: `red-expected`
 
+Resolved before starting:
+
+- The local evidence source is `tmp/gsi_valid_turbo_match.json`, the same 2,125-snapshot single-match capture used by
+  the GSI report.
+- The large source file is inspected only with targeted `jq` projections. It is not copied into tests, emitted in tool
+  output, committed, or read through line-oriented whole-file commands.
+- Nullable singleton/scalar facts use explicit `null`; collections use empty readonly arrays; numeric-looking strings
+  are not coerced.
+- Only finite numeric `provider.timestamp` is retained as nullable `sourceTimestampSeconds` diagnostic metadata.
+- Normalized non-chat envelopes cover the four shapes present in the capture: `generic_event`,
+  `bounty_rune_pickup`, `roshan_killed`, and `aegis_picked_up`.
+- `generic_event.data` accepts only valid JSON objects and retains an allowlist of scalar `type`, `time`, `value*`, and
+  `playerid*` fields. Unsupported keys and malformed inner JSON are discarded rather than retained raw.
+- Raw `chat_message` events and all message text are excluded before the normalized boundary.
+- Phase 1 adds compile-safe, unwired seams. The existing GSI router and raw latest-state production path are replaced
+  only in Phase 2, keeping the completed base suite green during RED.
+
+Local implementation sequence:
+
+1. Use targeted `jq` queries to select the minimum representative evidence for heartbeat, pre-game/full-state,
+   in-game, post-game, building, minimap-hero, and each non-chat event shape.
+2. Create small hand-reviewed sanitized raw fixtures next to the normalizer spec. Fixtures contain only fields consumed
+   by the contract and use synthetic identity-like values where identity is not discarded entirely.
+3. Add immutable normalized snapshot/value types under `modules/match/domain` and export only the GSI-facing input
+   types through `modules/match/public.ts`.
+4. Add explicit partial raw GSI types and an unwired `normalizeGsiSnapshot` seam under `integrations/gsi`; raw field
+   names remain confined to this integration.
+5. Add compile-safe normalized latest-state and safe client-directory seams without routing production requests
+   through them yet.
+6. Add intent-driven RED specs in four groups: normalization/absence, privacy and malformed data, normalized-state
+   isolation/immutability, and safe Discord identity lookup.
+7. Run the existing suite and repository checks, recording that prior coverage is green and only the new Phase 1 specs
+   fail for the expected missing implementations.
+
 Add compile-safe seams and failing specs for:
 
+- deterministic sanitized fixtures covering the scenarios approved in Phase 0;
 - raw `map`, `player`, `hero`, minimap hero, building, and event mapping;
 - string-preserving match identity and conservative team normalization;
 - optional/missing sections and invalid nested values;
