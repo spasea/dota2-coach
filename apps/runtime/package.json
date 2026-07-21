@@ -16,8 +16,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "jest",
+    "test:smoke": "node test/smoke-built-runtime.mjs",
     "test:watch": "jest --watchAll",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build && npm run test:smoke"
   },
   "engines": {
     "node": ">=24 <25"
