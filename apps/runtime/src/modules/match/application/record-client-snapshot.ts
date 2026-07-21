@@ -14,9 +14,11 @@ type RecordClientSnapshotDependencies = Readonly<{
 }>;
 
 export function createRecordClientSnapshot(dependencies: RecordClientSnapshotDependencies): RecordClientSnapshot {
-  void dependencies;
-
-  return () => {
-    throw new Error('Phase 5 record-client-snapshot behavior is not implemented.');
+  return (command) => {
+    dependencies.latestStateStore.save({
+      identity: command.identity,
+      receivedAt: dependencies.now().toISOString(),
+      snapshot: command.snapshot,
+    });
   };
 }

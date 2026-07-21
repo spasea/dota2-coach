@@ -230,7 +230,9 @@ snapshot получает пустой ответ `200 OK`.
 
 `GET /health` возвращает `200` и `{ "status": "ok" }`. Максимальный размер GSI request body на первом этапе —
 `1_048_576` bytes. Ошибки имеют стабильную форму `{ "error": { "code": "<CODE>" } }`, а request correlation
-возвращается через заголовок `X-Request-Id` без включения приватных деталей в response body.
+возвращается через сгенерированный runtime заголовок `X-Request-Id` без включения приватных деталей в response body.
+`POST /gsi` принимает `application/json` со стандартными параметрами media type, включая `charset=utf-8`; отсутствующий,
+не-JSON и vendor `application/*+json` media type возвращает `415 UNSUPPORTED_MEDIA_TYPE`.
 
 ### 5.2. Match-scoped role selection
 

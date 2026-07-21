@@ -23,8 +23,15 @@ export function createApp(dependencies: CreateAppDependencies): Express {
 
   app.use(createRequestContextMiddleware(dependencies.requestIdFactory));
   app.use(createRequestLoggingMiddleware(dependencies.logger));
-  app.use(express.json({ limit: dependencies.gsiBodyLimitBytes, strict: false }));
   app.use(createHealthRouter());
+  app.use(
+    '/gsi',
+    express.json({
+      limit: dependencies.gsiBodyLimitBytes,
+      strict: false,
+      type: 'application/json',
+    })
+  );
   app.use(
     createGsiRouter({
       recordClientSnapshot: dependencies.recordClientSnapshot,

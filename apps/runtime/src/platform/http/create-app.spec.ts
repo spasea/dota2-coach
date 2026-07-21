@@ -49,7 +49,7 @@ describe('HTTP application', () => {
   it('reports minimal process health with a correlation ID', async () => {
     const { app } = createTestContext();
 
-    const response = await request(app).get('/health');
+    const response = await request(app).get('/health').set('X-Request-Id', 'caller-controlled-id');
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toMatch(/^application\/json/);
@@ -57,22 +57,25 @@ describe('HTTP application', () => {
     expect(response.body).toEqual({ status: 'ok' });
   });
 
-  it('accepts an authenticated object and removes auth before invoking match', async () => {
-    const { app, recordClientSnapshot } = createTestContext();
-    const snapshot = { provider: { timestamp: 1_753_002_000 } };
+  it.each(['application/json', 'application/json; charset=utf-8'])(
+    'accepts an authenticated object with %s and removes auth before invoking match',
+    async (contentType) => {
+      const { app, recordClientSnapshot } = createTestContext();
+      const snapshot = { provider: { timestamp: 1_753_002_000 } };
 
-    const response = await request(app)
-      .post('/gsi')
-      .set('Content-Type', 'application/json')
-      .send({ auth: { token: knownGsiToken }, ...snapshot });
+      const response = await request(app)
+        .post('/gsi')
+        .set('Content-Type', contentType)
+        .send({ auth: { token: knownGsiToken }, ...snapshot });
 
-    expect(response.status).toBe(200);
-    expect(response.text).toBe('');
-    expect(recordClientSnapshot).toHaveBeenCalledWith({
-      identity: trustedIdentity,
-      snapshot,
-    });
-  });
+      expect(response.status).toBe(200);
+      expect(response.text).toBe('');
+      expect(recordClientSnapshot).toHaveBeenCalledWith({
+        identity: trustedIdentity,
+        snapshot,
+      });
+    }
+  );
 
   it('returns the same unauthorized response for missing and unknown credentials', async () => {
     const { app, recordClientSnapshot } = createTestContext();
@@ -122,28 +125,43 @@ describe('HTTP application', () => {
   });
 
   it('rejects malformed JSON', async () => {
-    const { app } = createTestContext();
+    const { app, recordClientSnapshot } = createTestContext();
 
     const response = await request(app).post('/gsi').set('Content-Type', 'application/json').send('{"auth":');
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: { code: 'INVALID_JSON' } });
+    expect(recordClientSnapshot).not.toHaveBeenCalled();
   });
 
-  it('rejects unsupported media types', async () => {
-    const { app } = createTestContext();
+  it('rejects a missing media type', async () => {
+    const { app, recordClientSnapshot } = createTestContext();
 
-    const response = await request(app)
-      .post('/gsi')
-      .set('Content-Type', 'text/plain')
-      .send('{"auth":{"token":"not-parsed"}}');
+    const response = await request(app).post('/gsi');
 
     expect(response.status).toBe(415);
     expect(response.body).toEqual({ error: { code: 'UNSUPPORTED_MEDIA_TYPE' } });
+    expect(recordClientSnapshot).not.toHaveBeenCalled();
   });
 
+  it.each(['text/plain', 'text/json', 'application/vnd.api+json'])(
+    'rejects unsupported media type %s',
+    async (contentType) => {
+      const { app, recordClientSnapshot } = createTestContext();
+
+      const response = await request(app)
+        .post('/gsi')
+        .set('Content-Type', contentType)
+        .send('{"auth":{"token":"not-parsed"}}');
+
+      expect(response.status).toBe(415);
+      expect(response.body).toEqual({ error: { code: 'UNSUPPORTED_MEDIA_TYPE' } });
+      expect(recordClientSnapshot).not.toHaveBeenCalled();
+    }
+  );
+
   it('rejects a JSON body larger than one MiB', async () => {
-    const { app } = createTestContext();
+    const { app, recordClientSnapshot } = createTestContext();
 
     const response = await request(app)
       .post('/gsi')
@@ -155,6 +173,7 @@ describe('HTTP application', () => {
 
     expect(response.status).toBe(413);
     expect(response.body).toEqual({ error: { code: 'PAYLOAD_TOO_LARGE' } });
+    expect(recordClientSnapshot).not.toHaveBeenCalled();
   });
 
   it('maps an unknown route to the stable not-found response', async () => {
@@ -180,8 +199,11 @@ describe('HTTP application', () => {
 
     const logOutput = readLogOutput();
 
+    expect(logOutput).toContain('"clientId":"client-01"');
+    expect(logOutput).toContain('"method":"POST"');
     expect(logOutput).toContain('request-01');
     expect(logOutput).toContain('/gsi');
+    expect(logOutput).toContain('"statusCode":200');
     expect(logOutput).not.toContain(knownGsiToken);
     expect(logOutput).not.toContain(secretSnapshotValue);
   });
