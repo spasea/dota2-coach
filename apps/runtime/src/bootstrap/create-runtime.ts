@@ -5,9 +5,13 @@ import { createServer } from 'node:http';
 import type { Logger } from 'pino';
 
 import {
-  createInMemoryMatchSessionStore,
+  createBuildCoachContext,
+  createInMemoryActiveMatchStore,
   createInMemoryNormalizedLatestStateStore,
   createRecordClientSnapshot,
+  createSetRequesterRoleOverride,
+  type BuildCoachContext,
+  type SetRequesterRoleOverride,
 } from '../modules/match/public.js';
 import type { ReadConfigText } from '../platform/config/config.types.js';
 import { loadClientConfigSources } from '../platform/config/load-runtime-config.js';
@@ -19,6 +23,12 @@ import { createLogger as createPinoLogger } from '../platform/logging/create-log
 import { readMonotonicMilliseconds, type MonotonicClock } from '../platform/time/monotonic-clock.js';
 
 const GSI_BODY_LIMIT_BYTES = 1_048_576;
+const PLAYER_HISTORY_RETENTION_MS = 90_000;
+const BUILDING_WINDOWS = Object.freeze({
+  activeDamageMs: 6_000,
+  recentDamageMs: 15_000,
+  pressureMs: 30_000,
+});
 
 export type RuntimeAddress = Readonly<{
   host: string;
@@ -26,6 +36,8 @@ export type RuntimeAddress = Readonly<{
 }>;
 
 export type Runtime = Readonly<{
+  buildCoachContext: BuildCoachContext;
+  setRequesterRoleOverride: SetRequesterRoleOverride;
   start: () => Promise<RuntimeAddress>;
   stop: () => Promise<void>;
 }>;
@@ -59,14 +71,30 @@ export async function createRuntime(
   );
   const trustedClientRegistry = parseClientConfig(configSources);
   const latestStateStore = createInMemoryNormalizedLatestStateStore();
-  const matchSessionStore = createInMemoryMatchSessionStore();
+  const activeMatchStore = createInMemoryActiveMatchStore();
   const recordClientSnapshot = createRecordClientSnapshot({
+    activeMatchStore,
     freshnessMs: settings.gsiFreshnessMs,
     latestStateStore,
     logLifecycleTransition: (metadata) => {
       logger.info(metadata, 'match lifecycle transitioned');
     },
-    matchSessionStore,
+    monotonicNow: dependencies.monotonicNow,
+    playerHistoryRetentionMs: PLAYER_HISTORY_RETENTION_MS,
+  });
+  const buildCoachContext = createBuildCoachContext({
+    activeMatchStore,
+    buildingWindows: BUILDING_WINDOWS,
+    clientDirectory: trustedClientRegistry,
+    freshnessMs: settings.gsiFreshnessMs,
+    latestStateStore,
+    monotonicNow: dependencies.monotonicNow,
+  });
+  const setRequesterRoleOverride = createSetRequesterRoleOverride({
+    activeMatchStore,
+    clientDirectory: trustedClientRegistry,
+    freshnessMs: settings.gsiFreshnessMs,
+    latestStateStore,
     monotonicNow: dependencies.monotonicNow,
   });
   const app = createApp({
@@ -79,6 +107,8 @@ export async function createRuntime(
   const server = createServer(app);
 
   return Object.freeze({
+    buildCoachContext,
+    setRequesterRoleOverride,
     start: async () => {
       await new Promise<void>((resolve, reject) => {
         const handleError = (error: Error) => {

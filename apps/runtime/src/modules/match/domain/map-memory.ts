@@ -29,5 +29,39 @@ export function createEmptyMapMemory(): MapMemory {
 }
 
 export function reduceMapMemory(input: ReduceMapMemoryInput): MapMemory {
-  return input.memory;
+  if (input.timelineUpdate === 'none' || input.facts === null) {
+    return input.memory;
+  }
+
+  const latest = Object.freeze({ ...input.facts });
+  const previous = input.memory.latest;
+
+  if (input.timelineUpdate === 'baseline' || previous === null) {
+    return Object.freeze({ latest, transitions: input.memory.transitions });
+  }
+
+  const changed =
+    previous.gameState !== latest.gameState ||
+    previous.radiantScore !== latest.radiantScore ||
+    previous.direScore !== latest.direScore;
+
+  if (!changed) {
+    return Object.freeze({ latest, transitions: input.memory.transitions });
+  }
+
+  const transition: MapTransition = Object.freeze({
+    observedAt: input.receivedAt,
+    gameTime: latest.gameTime,
+    previousGameState: previous.gameState,
+    currentGameState: latest.gameState,
+    previousRadiantScore: previous.radiantScore,
+    currentRadiantScore: latest.radiantScore,
+    previousDireScore: previous.direScore,
+    currentDireScore: latest.direScore,
+  });
+
+  return Object.freeze({
+    latest,
+    transitions: Object.freeze([...input.memory.transitions, transition]),
+  });
 }

@@ -34,6 +34,7 @@ function createBuilder(input: BuilderInput = {}) {
 
   return createBuildCoachContext({
     activeMatchStore,
+    buildingWindows: { activeDamageMs: 6_000, recentDamageMs: 15_000, pressureMs: 30_000 },
     clientDirectory,
     freshnessMs: 5_000,
     latestStateStore,
@@ -147,5 +148,52 @@ describe('ready coach context', () => {
     expect(Object.isFrozen(result.context)).toBe(true);
     expect(Object.isFrozen(result.context.teammates)).toBe(true);
     expect(Object.isFrozen(result.context.unknowns)).toBe(true);
+  });
+
+  it('keeps stale timeline facts explicit without suppressing fresh current context', () => {
+    const requester = createNormalizedClientState({ receivedAt: 5_500 });
+    const emptyState = createActiveMatchState(createMatchSession({ lastUsableSourceReceivedAt: 1_000 }));
+    const activeState: ActiveMatchState = {
+      ...emptyState,
+      memory: {
+        ...emptyState.memory,
+        heroes: {
+          ...emptyState.memory.heroes,
+          enemyRoster: ['npc_dota_hero_axe'],
+          enemies: [
+            {
+              heroName: 'npc_dota_hero_axe',
+              firstSeenAt: 1_000,
+              lastSeenAt: 1_000,
+              lastKnownPosition: { x: 500, y: 600 },
+              sourceVisible: true,
+            },
+          ],
+        },
+      },
+    };
+    const buildContext = createBuilder({ activeState, latestStates: [requester], now: 6_000 });
+
+    const result = buildContext({ discordUserId: requester.identity.discordUserId });
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      context: {
+        sharedSnapshot: requester.snapshot,
+        temporalFeatures: {
+          timelineStatus: 'stale',
+          enemyHeroes: [
+            {
+              heroName: 'npc_dota_hero_axe',
+              currentlyVisible: null,
+              lastKnownPosition: { x: 500, y: 600 },
+              lastSeenAgeMs: null,
+            },
+          ],
+          buildingPressure: { status: 'unavailable', reason: 'timeline_stale' },
+        },
+        unknowns: ['partial_team_coverage', 'timeline_stale', 'requester_history_unavailable'],
+      },
+    });
   });
 });

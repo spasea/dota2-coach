@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 6 — Compact Memory and Coach Context GREEN (not-started)`
+- Current implementation phase: `Phase 7 — Verification and Handoff (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -523,7 +523,7 @@ apps/runtime/src/
 │       │   ├── build-coach-context.spec.ts
 │       │   ├── build-coach-context.ts
 │       │   ├── client-directory.ts
-│       │   ├── match-session-store.ts
+│       │   ├── active-match-store.ts
 │       │   ├── normalized-latest-state-store.ts
 │       │   ├── record-client-snapshot.spec.ts
 │       │   ├── record-client-snapshot.ts
@@ -539,8 +539,8 @@ apps/runtime/src/
 │       │   ├── temporal-features.ts
 │       │   └── timeline.ts
 │       └── infrastructure/
-│           ├── in-memory-match-session-store.spec.ts
-│           ├── in-memory-match-session-store.ts
+│           ├── in-memory-active-match-store.spec.ts
+│           ├── in-memory-active-match-store.ts
 │           ├── in-memory-normalized-latest-state-store.spec.ts
 │           └── in-memory-normalized-latest-state-store.ts
 └── platform/
@@ -556,13 +556,13 @@ generic manager, and do not create empty future module directories.
 
 ## Milestone Status
 
-| Milestone                               | RED phase | GREEN phase | Status         |
-| --------------------------------------- | --------- | ----------- | -------------- |
-| M0. Contract baseline                   | —         | Phase 0     | `completed`    |
-| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `completed`    |
-| M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `completed`    |
-| M3. Compact memory and coaching context | Phase 5   | Phase 6     | `red-expected` |
-| M4. Verification and handoff            | —         | Phase 7     | `not-started`  |
+| Milestone                               | RED phase | GREEN phase | Status        |
+| --------------------------------------- | --------- | ----------- | ------------- |
+| M0. Contract baseline                   | —         | Phase 0     | `completed`   |
+| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `completed`   |
+| M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `completed`   |
+| M3. Compact memory and coaching context | Phase 5   | Phase 6     | `completed`   |
+| M4. Verification and handoff            | —         | Phase 7     | `not-started` |
 
 ## Phase 0 — Contract Baseline
 
@@ -897,9 +897,27 @@ Exit criteria:
 
 ## Phase 6 — Compact Memory and Coach Context GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
+
+Completed:
+
+- Implemented immutable map, hero, player, building, and event reducers with baseline-safe updates, source-only shared
+  deltas, client-owned 90-second player histories, half-open building windows, and canonical event deduplication.
+- Replaced the session-only store with one deeply immutable active-match aggregate so session, compact memory, and role
+  overrides are replaced or cleared atomically on lifecycle transitions.
+- Extended normalized ingest to route source, non-source, same-session, stale-return, event, and rollover updates to
+  their approved owners without retaining raw snapshots in match memory.
+- Implemented the coaching-context query with explicit availability results, deterministic fresh-client selection,
+  feature-level temporal availability, effective role resolution, and stable ordered unknown codes.
+- Implemented requester-only idempotent role overrides and constructed both internal application APIs in the runtime
+  composition root without adding an HTTP or Discord adapter.
+- Added integration coverage proving that non-source input cannot mutate shared building/enemy timelines, repeated
+  input does not duplicate compact events, source return rebaselines without gap deltas, and rollover clears old
+  memory and overrides together.
+- Verified the complete runtime check is green: type checking, ESLint, Prettier, 20 Jest suites/112 tests, ESM build,
+  and built-runtime smoke. No intentional RED spec or compile-safe production stub remains from Phase 5.
 
 Implement:
 

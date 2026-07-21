@@ -1,7 +1,8 @@
 import type { ClientIdentity } from '../domain/client-identity.js';
+import { advanceActiveMatchState } from '../domain/match-memory.js';
 import { advanceMatchSession, type TimelineStatus } from '../domain/match-session.js';
 import type { NormalizedClientSnapshot, Team } from '../domain/normalized-snapshot.js';
-import type { MatchSessionStore } from './match-session-store.js';
+import type { ActiveMatchStore } from './active-match-store.js';
 import type { NormalizedLatestStateStore } from './normalized-latest-state-store.js';
 
 export type RecordClientSnapshotCommand = Readonly<{
@@ -19,11 +20,12 @@ type MatchLifecycleTransitionMetadata = Readonly<{
 }>;
 
 type RecordClientSnapshotDependencies = Readonly<{
+  activeMatchStore: ActiveMatchStore;
   freshnessMs: number;
   latestStateStore: NormalizedLatestStateStore;
   logLifecycleTransition: (metadata: MatchLifecycleTransitionMetadata) => void;
-  matchSessionStore: MatchSessionStore;
   monotonicNow: () => number;
+  playerHistoryRetentionMs: number;
 }>;
 
 export function createRecordClientSnapshot(dependencies: RecordClientSnapshotDependencies): RecordClientSnapshot {
@@ -33,7 +35,8 @@ export function createRecordClientSnapshot(dependencies: RecordClientSnapshotDep
       receivedAt: dependencies.monotonicNow(),
       snapshot: command.snapshot,
     });
-    const currentSession = dependencies.matchSessionStore.getActive();
+    const currentActiveState = dependencies.activeMatchStore.getActive();
+    const currentSession = currentActiveState?.session ?? null;
     const decision = advanceMatchSession({
       currentSession,
       state,
@@ -41,9 +44,16 @@ export function createRecordClientSnapshot(dependencies: RecordClientSnapshotDep
     });
 
     dependencies.latestStateStore.save(state);
+    const nextActiveState = advanceActiveMatchState({
+      currentState: currentActiveState,
+      decision,
+      clientState: state,
+      freshnessMs: dependencies.freshnessMs,
+      playerHistoryRetentionMs: dependencies.playerHistoryRetentionMs,
+    });
 
-    if (decision.session !== currentSession) {
-      dependencies.matchSessionStore.replaceActive(decision.session);
+    if (nextActiveState !== currentActiveState) {
+      dependencies.activeMatchStore.replaceActive(nextActiveState);
     }
 
     const lifecycleChanged =

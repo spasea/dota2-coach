@@ -1,8 +1,6 @@
 import type { ContextUnavailableStatus } from '../domain/context.js';
 import type { Role } from '../domain/client-identity.js';
-import type { ActiveMatchStore } from './active-match-store.js';
-import type { ClientDirectory } from './client-directory.js';
-import type { NormalizedLatestStateStore } from './normalized-latest-state-store.js';
+import { createActiveRequesterResolver, type ActiveRequesterDependencies } from './resolve-active-requester.js';
 
 export type SetRequesterRoleOverrideCommand = Readonly<{
   discordUserId: string;
@@ -14,17 +12,32 @@ export type SetRequesterRoleOverrideResult =
 
 export type SetRequesterRoleOverride = (command: SetRequesterRoleOverrideCommand) => SetRequesterRoleOverrideResult;
 
-type SetRequesterRoleOverrideDependencies = Readonly<{
-  activeMatchStore: ActiveMatchStore;
-  clientDirectory: ClientDirectory;
-  freshnessMs: number;
-  latestStateStore: NormalizedLatestStateStore;
-  monotonicNow: () => number;
-}>;
+type SetRequesterRoleOverrideDependencies = ActiveRequesterDependencies;
 
 export function createSetRequesterRoleOverride(
   dependencies: SetRequesterRoleOverrideDependencies
 ): SetRequesterRoleOverride {
-  void dependencies;
-  return () => Object.freeze({ status: 'client_not_found' });
+  const resolveActiveRequester = createActiveRequesterResolver(dependencies);
+
+  return (command) => {
+    const requesterResult = resolveActiveRequester(command.discordUserId);
+
+    if (requesterResult.status !== 'ready') {
+      return requesterResult;
+    }
+
+    const { requester, activeState } = requesterResult;
+
+    const otherOverrides = activeState.roleOverrides.filter((entry) => entry.clientId !== requester.identity.clientId);
+    const roleOverrides = [
+      ...otherOverrides,
+      Object.freeze({ clientId: requester.identity.clientId, role: command.role }),
+    ];
+    roleOverrides.sort((left, right) => left.clientId.localeCompare(right.clientId));
+    dependencies.activeMatchStore.replaceActive(
+      Object.freeze({ ...activeState, roleOverrides: Object.freeze(roleOverrides) })
+    );
+
+    return Object.freeze({ status: 'updated', effectiveRole: command.role });
+  };
 }
