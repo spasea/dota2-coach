@@ -428,7 +428,11 @@ apps/runtime/
 │       └── gsi/
 │           ├── authenticate-gsi-client.spec.ts
 │           ├── authenticate-gsi-client.ts
-│           └── gsi.router.ts
+│           ├── gsi.router.ts
+│           └── middleware/
+│               ├── authenticate-gsi-request.ts
+│               ├── gsi-request-context.ts
+│               └── parse-gsi-request.ts
 ├── test/
 │   └── fixtures/
 ├── eslint.config.js
@@ -694,8 +698,8 @@ Completed:
   GSI transport types.
 - Implemented server-owned request correlation, `X-Request-Id`, bounded completion logs, and safe resolved-client
   metadata without request headers or bodies.
-- Implemented the liveness router, authenticated GSI ingest, top-level shape validation, `auth` removal, and synchronous
-  dispatch through `modules/match/public.ts`.
+- Implemented the liveness router and a composed GSI pipeline with integration-owned parsing and authentication
+  middleware, a thin dispatch handler, `auth` removal, and synchronous dispatch through `modules/match/public.ts`.
 - Scoped the permissive JSON value parser and one-MiB limit to `/gsi`; accepted `application/json` with standard
   parameters and rejected missing, non-JSON, and vendor JSON media types.
 - Implemented stable not-found, expected-error, JSON syntax, payload-size, and unexpected-error response mapping without
