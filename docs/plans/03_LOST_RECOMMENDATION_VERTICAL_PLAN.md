@@ -179,14 +179,15 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     current allied defenders, visible enemies near the structure, and evidence uncertainty.
 52. Arrival classes remain coarse: already near, TP technically available, slow/unavailable, or unknown. No path or
     exact travel-time promise is rendered.
-53. Own-structure survival may be represented only as conservative bands derived from observed own-building health
-    deltas: likely survives arrival, uncertain, or unlikely. Exact destruction countdowns are not user-facing facts.
+53. Own-structure condition is represented by a non-temporal `StructureRisk` level: `stable`, `pressured`, or
+    `critical`. It is derived from structure kind, current health percent, active/recent/repeated damage, damage-event
+    counts, last-damage age, and timeline availability. It never estimates time to destruction or compares countdowns.
 54. For T1/T2, `DEFEND` is blocked when the requester would arrive isolated and the visible enemy lower bound exceeds
     the ready defenders currently near the structure including the requester after arrival.
 55. For T3 and barracks, the same mismatch is a strong penalty and may block medium-confidence advice when evidence is
     insufficient.
 56. Ancient pressure may bypass the outer-structure blocker as a last-stand override, but the explanation must expose
-    the numerical danger rather than promise survival.
+    the numerical danger rather than guarantee a successful defense.
 57. Connected teammates who are remote remain absent from current defender count even when healthy and TP-ready.
 58. An unconnected allied minimap hero near the structure counts only as uncertain positional support. A fresh
     connected hero near it may also contribute exact readiness evidence.
@@ -414,7 +415,7 @@ Pure Lost domain functions own:
 - team-oriented map-depth projection;
 - spatial distance/proximity and team-cluster derivation;
 - requester readiness;
-- structure pressure and conservative survival bands;
+- structure pressure and non-temporal `StructureRisk`;
 - defense feasibility and numerical mismatch blockers;
 - isolation and visibility risk;
 - candidate generation and deterministic tie-breaking;
@@ -502,6 +503,20 @@ type BuildingPressure = Readonly<{
   lastDamageAgeMs: number | null;
 }>;
 ```
+
+### Lost structure-risk signal
+
+```ts
+type StructureRiskLevel = "stable" | "pressured" | "critical";
+
+type StructureRisk = Readonly<{
+  buildingId: string;
+  level: StructureRiskLevel;
+}>;
+```
+
+`StructureRisk` belongs to `lost`, not `match`. It classifies current evidence without producing time-to-loss,
+survival, or arrival-time estimates.
 
 ### Lost action and result
 
@@ -716,6 +731,11 @@ readiness:
   low_health_percent: <validated percentage>
   low_mana_percent: <validated percentage>
 
+structure_risk:
+  critical_health_percent: <validated percentage>
+  pressured_health_percent: <validated percentage greater than critical_health_percent>
+  repeated_active_damage_events: <positive integer>
+
 stability:
   hysteresis_ms: 30000
   previous_action_bonus: <non-negative number>
@@ -884,8 +904,9 @@ Resolve before writing RED specs:
 - exact confirmed minimap unit-name families for tower, barracks, and Ancient markers;
 - canonical structure-ID normalization between provider and minimap names;
 - evidence-calibrated map-depth, structure-proximity, and cluster-radius defaults;
+- evidence-calibrated non-temporal `StructureRisk` thresholds;
 - complete schema-version-1 Lost policy keys and validation relationships;
-- exact conservative structure-survival band inputs without a user-facing countdown.
+- exact factual `StructureRisk` inputs without time-to-loss or arrival-time estimates.
 
 Evidence discipline:
 
@@ -971,7 +992,7 @@ Add compile-safe pure seams and failing specs for:
 - connected exact readiness versus unconnected positional-only evidence;
 - requester readiness with strong HP, supporting mana, disables, TP, respawn, and buyback context;
 - active/recent/repeated structure pressure and structure criticality;
-- conservative own-structure survival bands;
+- non-temporal `StructureRisk` levels and exact threshold boundaries;
 - defense arrival classes;
 - current defenders already near a structure;
 - visible enemy lower-bound counts and ambiguity penalties;
@@ -1010,7 +1031,7 @@ Implement pure domain behavior for:
 - map-depth and distance projections;
 - current structure/enemy/ally association without attacker claims;
 - requester readiness;
-- pressure severity and survival bands;
+- pressure severity and non-temporal `StructureRisk`;
 - defense feasibility;
 - isolation and team clusters;
 - directional candidate generation;
@@ -1170,6 +1191,7 @@ Exit criteria:
 | Enemy-data honesty    | No enemy HP/level/items/cooldowns/DPS or exact attacker/target is fabricated                     |
 | Shared current view   | Current heroes/structures come from one freshest shared snapshot, never a client union           |
 | Building pressure     | Active/recent/repeated facts honor 6/15/30-second windows and stale/rebaseline guards            |
+| Structure risk        | Stable/pressured/critical classification is non-temporal and never estimates time to loss        |
 | Map depth             | Radiant/Dire mirroring and exact configured boundaries are deterministic                         |
 | Team cluster          | At least two nearby allies are required; unsafe/unknown destinations degrade honestly            |
 | Connected readiness   | Exact teammate state improves relevant evidence without implying future action                   |
