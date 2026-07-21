@@ -14,6 +14,7 @@ services:
       CHOKIDAR_USEPOLLING: 'true'
       CLIENT_CONFIG_PATH: /etc/dota2-coach/clients.yaml
       CLIENT_CREDENTIALS_PATH: /run/secrets/dota2-coach/client-credentials.yaml
+      GSI_FRESHNESS_MS: 5000
       HOST: 0.0.0.0
       LOG_LEVEL: ${RUNTIME_LOG_LEVEL:-info}
       PORT: 3000

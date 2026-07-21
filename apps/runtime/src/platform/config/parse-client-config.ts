@@ -89,7 +89,7 @@ export function parseClientConfig(sources: ClientConfigYamlSources): TrustedClie
   }
 
   const identitiesByTokenDigest = new Map<string, TrustedClientIdentity>();
-  const discordUserIds = new Set<string>();
+  const identitiesByDiscordUserId = new Map<string, TrustedClientIdentity>();
 
   for (const clientId of clientIds) {
     const client = clients[clientId];
@@ -101,7 +101,7 @@ export function parseClientConfig(sources: ClientConfigYamlSources): TrustedClie
 
     const tokenDigest = digestToken(credential.gsi_token);
 
-    if (identitiesByTokenDigest.has(tokenDigest) || discordUserIds.has(credential.discord_user_id)) {
+    if (identitiesByTokenDigest.has(tokenDigest) || identitiesByDiscordUserId.has(credential.discord_user_id)) {
       throw new ConfigurationError({ source: 'combined', stage: 'validation' });
     }
 
@@ -113,11 +113,11 @@ export function parseClientConfig(sources: ClientConfigYamlSources): TrustedClie
     });
 
     identitiesByTokenDigest.set(tokenDigest, identity);
-    discordUserIds.add(credential.discord_user_id);
+    identitiesByDiscordUserId.set(identity.discordUserId, identity);
   }
 
   return Object.freeze({
     resolveToken: (gsiToken: string) => identitiesByTokenDigest.get(digestToken(gsiToken)) ?? null,
-    resolveDiscordUserId: () => null,
+    resolveDiscordUserId: (discordUserId: string) => identitiesByDiscordUserId.get(discordUserId) ?? null,
   });
 }

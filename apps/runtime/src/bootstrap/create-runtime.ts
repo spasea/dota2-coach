@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 
 import type { Logger } from 'pino';
 
-import { createInMemoryLatestStateStore, createRecordClientSnapshot } from '../modules/match/public.js';
+import { createInMemoryNormalizedLatestStateStore, createRecordClientSnapshot } from '../modules/match/public.js';
 import type { ReadConfigText } from '../platform/config/config.types.js';
 import { loadClientConfigSources } from '../platform/config/load-runtime-config.js';
 import { parseClientConfig } from '../platform/config/parse-client-config.js';
@@ -12,6 +12,7 @@ import { parseRuntimeSettings, type RuntimeLogLevel } from '../platform/config/p
 import { createApp } from '../platform/http/create-app.js';
 import type { RequestIdFactory } from '../platform/http/middleware/request-context.js';
 import { createLogger as createPinoLogger } from '../platform/logging/create-logger.js';
+import { readMonotonicMilliseconds, type MonotonicClock } from '../platform/time/monotonic-clock.js';
 
 const GSI_BODY_LIMIT_BYTES = 1_048_576;
 
@@ -27,14 +28,14 @@ export type Runtime = Readonly<{
 
 export type CreateRuntimeDependencies = Readonly<{
   createLogger: (logLevel: RuntimeLogLevel) => Logger;
-  now: () => Date;
+  monotonicNow: MonotonicClock;
   readConfigText: ReadConfigText;
   requestIdFactory: RequestIdFactory;
 }>;
 
 const defaultDependencies: CreateRuntimeDependencies = Object.freeze({
   createLogger: createPinoLogger,
-  now: () => new Date(),
+  monotonicNow: readMonotonicMilliseconds,
   readConfigText: (path) => readFile(path, 'utf8'),
   requestIdFactory: randomUUID,
 });
@@ -53,10 +54,10 @@ export async function createRuntime(
     dependencies.readConfigText
   );
   const trustedClientRegistry = parseClientConfig(configSources);
-  const latestStateStore = createInMemoryLatestStateStore();
+  const latestStateStore = createInMemoryNormalizedLatestStateStore();
   const recordClientSnapshot = createRecordClientSnapshot({
     latestStateStore,
-    now: dependencies.now,
+    monotonicNow: dependencies.monotonicNow,
   });
   const app = createApp({
     gsiBodyLimitBytes: GSI_BODY_LIMIT_BYTES,

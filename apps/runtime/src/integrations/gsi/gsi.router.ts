@@ -5,6 +5,7 @@ import type { TrustedClientRegistry } from '../../platform/config/config.types.j
 import { createAuthenticateGsiRequest } from './middleware/authenticate-gsi-request.js';
 import { getGsiRequestContext } from './middleware/gsi-request-context.js';
 import { parseGsiRequest } from './middleware/parse-gsi-request.js';
+import { normalizeGsiSnapshot } from './normalize-gsi-snapshot.js';
 
 export type GsiRouterDependencies = Readonly<{
   recordClientSnapshot: RecordClientSnapshot;
@@ -27,7 +28,7 @@ export function createGsiRouter(dependencies: GsiRouterDependencies): Router {
 
       dependencies.recordClientSnapshot({
         identity: context.identity,
-        snapshot: context.snapshot,
+        snapshot: normalizeGsiSnapshot(context.snapshot),
       });
       response.status(200).end();
     }

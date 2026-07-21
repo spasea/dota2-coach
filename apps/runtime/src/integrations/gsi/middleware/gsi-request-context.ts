@@ -1,17 +1,18 @@
 import type { Response } from 'express';
 
-import type { ClientIdentity, ClientSnapshot } from '../../../modules/match/public.js';
+import type { ClientIdentity } from '../../../modules/match/public.js';
+import type { RawGsiSnapshot } from '../raw-gsi.types.js';
 
 export type ParsedGsiRequest = Readonly<{
   stage: 'parsed';
   gsiToken?: string;
-  snapshot: ClientSnapshot;
+  snapshot: RawGsiSnapshot;
 }>;
 
 export type AuthenticatedGsiRequest = Readonly<{
   stage: 'authenticated';
   identity: ClientIdentity;
-  snapshot: ClientSnapshot;
+  snapshot: RawGsiSnapshot;
 }>;
 
 export type GsiRequestContext = ParsedGsiRequest | AuthenticatedGsiRequest;

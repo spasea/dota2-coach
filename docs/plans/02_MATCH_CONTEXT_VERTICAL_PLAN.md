@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 2 — Normalization and Client State GREEN (not-started)`
+- Current implementation phase: `Phase 3 — Match Lifecycle and Timeline RED (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -554,7 +554,7 @@ generic manager, and do not create empty future module directories.
 | Milestone                               | RED phase | GREEN phase | Status        |
 | --------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                   | —         | Phase 0     | `completed`   |
-| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `in-progress` |
+| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `completed`   |
 | M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `not-started` |
 | M3. Compact memory and coaching context | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff            | —         | Phase 7     | `not-started` |
@@ -691,9 +691,32 @@ Exit criteria:
 
 ## Phase 2 — Normalization and Client State GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
+
+Completed:
+
+- Implemented stateless tolerant normalization for approved provider/map/player/hero/minimap/building and non-chat
+  event facts with explicit null/empty absence, no numeric string coercion, deterministic building ordering, and deep
+  immutable output.
+- Implemented all four approved non-chat event envelopes and allowlisted nested `generic_event` parsing; malformed
+  inner JSON, unknown events, chat messages, unsupported fields, and raw text are discarded.
+- Implemented the immutable normalized latest-state store with client-scoped replacement, independent clients, owned
+  copies, and numeric monotonic receive time.
+- Implemented safe immutable Discord user ID lookup in the validated trusted-client registry without exposing token
+  material.
+- Added positive-integer `GSI_FRESHNESS_MS` process configuration with the approved `5000` default and explicit local
+  Compose value.
+- Added the Node monotonic-clock adapter and deterministic runtime/test injection.
+- Wired the GSI router to normalize the authenticated auth-stripped object before invoking the public `match` command.
+- Migrated `recordClientSnapshot` and runtime composition to normalized state and monotonic receive time.
+- Removed the old raw `ClientSnapshot`, `LatestClientState`, raw latest-state port/store/spec, and all public exports for
+  that path; codebase graph search confirms no old symbols remain.
+- Preserved the approved `POST /gsi` success/error contracts and safe logging behavior, including malformed optional
+  nested fields.
+- Verified the complete runtime check is green: type checking, ESLint, Prettier, 10 Jest suites/64 tests, ESM build,
+  built-runtime smoke, and `git diff --check`.
 
 Implement:
 

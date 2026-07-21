@@ -37,7 +37,7 @@ function createDependencies(
 ): CreateRuntimeDependencies {
   return {
     createLogger: () => pino({ level: 'silent' }),
-    now: () => new Date('2026-07-21T12:00:00.000Z'),
+    monotonicNow: () => 12_345,
     readConfigText: (path) => Promise.resolve(documents.get(path) ?? ''),
     requestIdFactory: () => 'request-01',
   };

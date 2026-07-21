@@ -3,10 +3,9 @@ export {
   type RecordClientSnapshot,
   type RecordClientSnapshotCommand,
 } from './application/record-client-snapshot.js';
-export type { LatestStateStore } from './application/latest-state-store.js';
 export type { ClientDirectory } from './application/client-directory.js';
 export type { NormalizedLatestStateStore } from './application/normalized-latest-state-store.js';
-export type { ClientIdentity, ClientSnapshot, LatestClientState } from './domain/latest-client-state.js';
+export type { ClientIdentity } from './domain/client-identity.js';
 export type { NormalizedClientState } from './domain/normalized-client-state.js';
 export type {
   HeroMarkerKind,
@@ -25,5 +24,4 @@ export type {
   Position,
   Team,
 } from './domain/normalized-snapshot.js';
-export { createInMemoryLatestStateStore } from './infrastructure/in-memory-latest-state-store.js';
 export { createInMemoryNormalizedLatestStateStore } from './infrastructure/in-memory-normalized-latest-state-store.js';

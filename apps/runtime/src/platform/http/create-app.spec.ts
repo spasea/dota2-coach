@@ -59,7 +59,7 @@ describe('HTTP application', () => {
   });
 
   it.each(['application/json', 'application/json; charset=utf-8'])(
-    'accepts an authenticated object with %s and removes auth before invoking match',
+    'accepts an authenticated object with %s and sends normalized state to match',
     async (contentType) => {
       const { app, recordClientSnapshot } = createTestContext();
       const snapshot = { provider: { timestamp: 1_753_002_000 } };
@@ -73,7 +73,15 @@ describe('HTTP application', () => {
       expect(response.text).toBe('');
       expect(recordClientSnapshot).toHaveBeenCalledWith({
         identity: trustedIdentity,
-        snapshot,
+        snapshot: {
+          sourceTimestampSeconds: 1_753_002_000,
+          match: null,
+          player: null,
+          hero: null,
+          minimapHeroes: [],
+          buildings: [],
+          events: [],
+        },
       });
     }
   );
@@ -117,7 +125,23 @@ describe('HTTP application', () => {
     expect(response.text).toBe('');
     expect(recordClientSnapshot).toHaveBeenCalledWith({
       identity: trustedIdentity,
-      snapshot,
+      snapshot: {
+        sourceTimestampSeconds: null,
+        match: {
+          matchId: '8902657168',
+          gameState: null,
+          gameTime: null,
+          clockTime: null,
+          paused: null,
+          radiantScore: null,
+          direScore: null,
+        },
+        player: null,
+        hero: null,
+        minimapHeroes: [],
+        buildings: [],
+        events: [],
+      },
     });
   });
 

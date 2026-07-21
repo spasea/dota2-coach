@@ -63,12 +63,13 @@ export type RawGsiEvent = Readonly<{
   snatched?: unknown;
 }>;
 
-export type RawGsiSnapshot = Readonly<{
-  provider?: unknown;
-  map?: unknown;
-  player?: unknown;
-  hero?: unknown;
-  minimap?: unknown;
-  buildings?: unknown;
-  events?: unknown;
-}>;
+export type RawGsiSnapshot = Readonly<Record<string, unknown>> &
+  Readonly<{
+    provider?: unknown;
+    map?: unknown;
+    player?: unknown;
+    hero?: unknown;
+    minimap?: unknown;
+    buildings?: unknown;
+    events?: unknown;
+  }>;
