@@ -25,6 +25,5 @@ export type LostPolicy = Readonly<{
   mapDepth: LostMapDepthPolicy;
   proximity: LostProximityPolicy;
   structureRisk: LostStructureRiskPolicy;
+  readiness: LostReadinessPolicy;
 }>;
-
-export type LostSignalPolicy = LostPolicy & Readonly<{ readiness: LostReadinessPolicy }>;

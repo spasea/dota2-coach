@@ -8,9 +8,9 @@ import type {
 } from '../../match/public.js';
 import { deriveLostSignals } from './derive-lost-signals.js';
 import { createLostContext } from './lost-domain.spec-fixtures.js';
-import type { LostSignalPolicy } from './lost-policy.js';
+import type { LostPolicy } from './lost-policy.js';
 
-const policy: LostSignalPolicy = Object.freeze({
+const policy: LostPolicy = Object.freeze({
   schemaVersion: 1,
   mapDepth: Object.freeze({ centerHalfWidth: 1_200, baseBoundary: 7_700 }),
   proximity: Object.freeze({ structureRadius: 1_600, teamClusterRadius: 1_200, minimumClusterSize: 2 }),
@@ -136,12 +136,19 @@ describe('Lost structure-risk signals', () => {
   );
 
   it('returns deeply immutable signal collections', () => {
-    const signals = deriveLostSignals({ context: createLostContext(), policy });
+    const context = deepFreeze(
+      pressuredDefenseContext({
+        structure: tower(2),
+        teammates: [connected('npc_dota_hero_axe', { x: 0, y: 100 }, 'client-02')],
+        allies: [ally('npc_dota_hero_oracle', { x: 100, y: 0 })],
+        enemies: [enemy('npc_dota_hero_sniper', { x: 100, y: 100 })],
+      })
+    );
+    const serializedContext = JSON.stringify(context);
+    const signals = deriveLostSignals({ context, policy: deepFreeze(policy) });
 
-    expect(Object.isFrozen(signals)).toBe(true);
-    expect(Object.isFrozen(signals.structureRisks)).toBe(true);
-    expect(Object.isFrozen(signals.defenses)).toBe(true);
-    expect(Object.isFrozen(signals.unknowns)).toBe(true);
+    expect(JSON.stringify(context)).toBe(serializedContext);
+    expectDeepFrozen(signals);
   });
 });
 
@@ -296,6 +303,52 @@ describe('Lost defense and isolation signals', () => {
     });
   });
 
+  it.each([
+    ['low health', { healthPercent: 25 }],
+    ['unknown health', { healthPercent: null }],
+    ['unknown life state', { alive: null }],
+    ['confirmed disable', { disabled: true }],
+  ] as const)('keeps a nearby connected ally with %s as uncertain support', (_caseName, readiness) => {
+    const context = pressuredDefenseContext({
+      structure: tower(2),
+      teammates: [connected('npc_dota_hero_axe', { x: 100, y: 100 }, 'client-02', readiness)],
+    });
+
+    expect(deriveLostSignals({ context, policy }).defenses[0]).toMatchObject({
+      readyDefenders: 1,
+      uncertainSupports: 1,
+    });
+  });
+
+  it('does not disqualify requester or a nearby connected ally for low mana alone', () => {
+    const context = pressuredDefenseContext({
+      structure: tower(2),
+      requester: { manaPercent: 20 },
+      teammates: [connected('npc_dota_hero_axe', { x: 100, y: 100 }, 'client-02', { manaPercent: 20 })],
+    });
+
+    expect(deriveLostSignals({ context, policy }).defenses[0]).toMatchObject({
+      readyDefenders: 2,
+      uncertainSupports: 0,
+    });
+  });
+
+  it('does not count a low-health requester as a defender after technical TP arrival', () => {
+    const context = pressuredDefenseContext({
+      structure: tower(2),
+      requester: { healthPercent: 25 },
+      enemies: [enemy('npc_dota_hero_sniper', { x: 100, y: 100 })],
+    });
+
+    expect(deriveLostSignals({ context, policy }).defenses[0]).toMatchObject({
+      arrivalClass: 'teleport_available',
+      readyDefenders: 0,
+      uncertainSupports: 0,
+      numericalRisk: 'outnumbered',
+      response: 'blocked',
+    });
+  });
+
   it('does not count two remote connected TP-ready teammates as current defenders', () => {
     const context = pressuredDefenseContext({
       structure: tower(2),
@@ -305,7 +358,10 @@ describe('Lost defense and isolation signals', () => {
       ],
     });
 
-    expect(deriveLostSignals({ context, policy }).defenses[0]).toMatchObject({ readyDefenders: 1 });
+    expect(deriveLostSignals({ context, policy }).defenses[0]).toMatchObject({
+      readyDefenders: 1,
+      uncertainSupports: 0,
+    });
   });
 
   it('deduplicates visible enemy hero identity before reporting the lower bound', () => {
@@ -370,8 +426,15 @@ function enemy(heroName: string, position: Position): NormalizedHeroObservation 
   return { heroName, team: 'dire', position, markerKind: 'enemy' };
 }
 
-function connected(heroName: string, position: Position, clientId: string) {
-  return { clientId, heroName, position, teleportStatus: 'ready' as const };
+type ConnectedReadiness = Readonly<{
+  healthPercent?: number | null;
+  manaPercent?: number | null;
+  alive?: boolean | null;
+  disabled?: boolean | null;
+}>;
+
+function connected(heroName: string, position: Position, clientId: string, readiness: ConnectedReadiness = {}) {
+  return { clientId, heroName, position, teleportStatus: 'ready' as const, ...readiness };
 }
 
 function tower(tier: 2 | 3 | 4): NormalizedStructureObservation {
@@ -429,6 +492,7 @@ function pressure(overrides: PressureOverrides = {}) {
 
 type DefenseScenario = Readonly<{
   structure: NormalizedStructureObservation;
+  requester?: NonNullable<Parameters<typeof createLostContext>[0]>['requester'];
   teammates?: NonNullable<Parameters<typeof createLostContext>[0]>['teammates'];
   allies?: readonly NormalizedHeroObservation[];
   enemies?: readonly NormalizedHeroObservation[];
@@ -442,10 +506,38 @@ function pressuredDefenseContext(scenario: DefenseScenario): CoachContext {
   };
 
   return createLostContext({
-    requester: { position: { x: 5_000, y: 5_000 }, teleportStatus: 'ready' },
+    requester: {
+      position: { x: 5_000, y: 5_000 },
+      teleportStatus: 'ready',
+      ...scenario.requester,
+    },
     ...(scenario.teammates === undefined ? {} : { teammates: scenario.teammates }),
     minimapHeroes: [...(scenario.allies ?? []), ...(scenario.enemies ?? [])],
     minimapStructures: [scenario.structure],
     buildingPressure: { status: 'available', value: [building] },
   });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) {
+    return value;
+  }
+
+  for (const nested of Object.values(value)) {
+    deepFreeze(nested);
+  }
+
+  return Object.freeze(value);
+}
+
+function expectDeepFrozen(value: unknown): void {
+  if (typeof value !== 'object' || value === null) {
+    return;
+  }
+
+  expect(Object.isFrozen(value)).toBe(true);
+
+  for (const nested of Object.values(value)) {
+    expectDeepFrozen(nested);
+  }
 }

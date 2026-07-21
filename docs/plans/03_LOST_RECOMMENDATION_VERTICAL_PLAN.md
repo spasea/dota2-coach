@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 3 — Lost Signals and Candidate Safety RED (red-expected)`
+- Current implementation phase: `Phase 4 — Lost Signals and Candidate Safety GREEN (completed)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -164,6 +164,9 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     `RESET`, `DEFEND`, `REGROUP`, and `FARM_SAFELY`.
 40. `HOLD_AND_WAIT` is a non-scored hard-gate result for a dead requester, a paused match, or a ready factual context
     whose critical unknowns prevent every directional action from reaching medium confidence.
+    `insufficient_evidence` requires a combined absence of usable direction: critical requester readiness is unknown,
+    structure pressure is unavailable, no non-contradicted allied cluster exists, and isolation cannot be established.
+    One unknown, low mana, partial team coverage, or one unavailable optional feature never creates this hold by itself.
 41. Context-query failures such as unknown client, missing/stale requester snapshot, unavailable active match, or
     requester outside the active session return an explicit unavailable result rather than `HOLD_AND_WAIT`.
 42. A non-active game state returns a state-specific unavailable result. This slice does not advise during hero
@@ -188,6 +191,8 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     and timeline availability.
 51. Feasibility considers requester readiness, requester position/map depth, structure position, coarse arrival class,
     current allied defenders, visible enemies near the structure, and evidence uncertainty.
+    `readyDefenders` is a conservative confirmed lower bound, while `uncertainSupports` is reported separately and
+    never removes an outer-structure suicide blocker.
 52. Arrival classes remain coarse: already near, TP technically available, slow/unavailable, or unknown. No path or
     exact travel-time promise is rendered.
 53. Own-structure condition is represented by a non-temporal `StructureRisk` level: `stable`, `pressured`, or
@@ -199,13 +204,20 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     rebaselining timeline may retain health-based risk but cannot claim current-damage urgency.
 54. For T1/T2, `DEFEND` is blocked when the requester would arrive isolated and the visible enemy lower bound exceeds
     the ready defenders currently near the structure including the requester after arrival.
+    The requester enters that count only when alive, above the configured low-health boundary, confirmed free of the
+    normalized disable flags, and either already near or technically able to teleport. Low mana does not remove the
+    requester from the count.
 55. For T3 and barracks, the same mismatch is a strong penalty and may block medium-confidence advice when evidence is
     insufficient.
 56. Ancient pressure may bypass the outer-structure blocker as a last-stand override, but the explanation must expose
     the numerical danger rather than guarantee a successful defense.
 57. Connected teammates who are remote remain absent from current defender count even when healthy and TP-ready.
 58. An unconnected allied minimap hero near the structure counts only as uncertain positional support. A fresh
-    connected hero near it may also contribute exact readiness evidence.
+    connected hero near it is a ready defender only when alive, above the low-health boundary, and confirmed free of
+    all normalized disable flags. Low mana does not disqualify it, and TP readiness is irrelevant because it is
+    already near. A nearby connected hero with low or unknown health, unknown life/disable state, or a confirmed
+    disable remains uncertain positional support. A remote hero contributes neither ready nor uncertain current
+    support regardless of connection or TP readiness.
 59. Stale/rebaselining building history cannot produce a current-damage claim or urgent `DEFEND`.
 60. Low structure HP without fresh/relevant damage remains strategic context and does not create current urgency.
 61. `DEFEND` is never rendered as “you will save the tower” or “the team can win the fight.” It describes the
@@ -963,7 +975,7 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 | -------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                        | —         | Phase 0     | `completed`   |
 | M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`   |
-| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `in-progress` |
+| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed`   |
 | M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
 
@@ -1242,7 +1254,7 @@ Exit criteria:
 
 ## Phase 4 — Lost Signals and Candidate Safety GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
 
@@ -1258,6 +1270,42 @@ Implement pure domain behavior for:
 - directional candidate generation;
 - hard gates, candidate blockers, unknown propagation, and guardrail selection.
 
+Implementation sequence:
+
+1. Complete the canonical policy contract:
+   - add `readiness` directly to `LostPolicy` and remove the temporary signal-only distinction;
+   - extend the strict parser with finite `0 < threshold < 100` validation;
+   - add the approved `25%` HP and `20%` mana defaults to the tracked YAML without changing `schema_version: 1`;
+   - keep startup behavior validation-only and do not wire recommendation generation into runtime.
+2. Implement spatial primitives:
+   - use `x + y` for Radiant depth and `-(x + y)` for Dire with the documented inclusive boundaries;
+   - preserve unknown positions;
+   - add only Euclidean distance, nearest-structure-position, and maximum pair-distance helpers required by Lost;
+   - treat any confirmed position of a multi-position T4 area as the same defense destination.
+3. Build deterministic current observations:
+   - exclude the requester from destination clusters;
+   - deduplicate heroes by identity;
+   - prefer a fresh connected local position over the shared minimap marker for the same hero, falling back to the
+     current shared marker only when the local position is unavailable;
+   - keep connected readiness separate from unconnected positional evidence.
+4. Derive immutable signals:
+   - requester readiness and mirrored map depth;
+   - health-based `StructureRisk` from current own-building facts even when temporal pressure is unavailable;
+   - active/recent/repeated urgency only from healthy available building-pressure evidence;
+   - compact team-cluster candidates using inclusive pairwise radius and the approved deterministic ranking;
+   - isolation from requester depth and nearby allied positional evidence, plus unique visible/missing enemy counts;
+   - defense arrival, confirmed `readyDefenders`, separate `uncertainSupports`, numerical risk, and the approved
+     outer/high-ground/Ancient response.
+5. Apply candidate safety without scoring:
+   - map context failures and inactive game state to explicit unavailability;
+   - apply dead, paused, and the narrow combined `insufficient_evidence` holds before candidate generation;
+   - return exactly `RESET`, `DEFEND`, `REGROUP`, and `FARM_SAFELY` in stable order;
+   - apply blockers before future scoring and propagate risks, unknowns, and guardrails without selecting a winner.
+6. Close the GREEN phase:
+   - make every Phase 3 RED assertion pass without weakening its scenarios;
+   - run typecheck, lint, format, the full Jest suite, ESM build, built-runtime smoke, and `git diff --check`;
+   - mark Phase 4 and M2 completed only after no intentional Phase 3 RED remains.
+
 Verification:
 
 - Phase 3 specs pass;
@@ -1268,6 +1316,35 @@ Verification:
 - fresh damage opens but does not force `DEFEND`;
 - outer-structure suicidal defense is blocked before scoring;
 - every signal function is deterministic, immutable, clock-free, and transport-free.
+
+Completed:
+
+- Extended the canonical deeply immutable `LostPolicy`, strict parser, tracked local YAML, runtime composition
+  fixture, and built-runtime smoke fixture with the approved inclusive `25%` HP and `20%` mana thresholds without a
+  schema-version change or recommendation wiring.
+- Implemented immutable Radiant/Dire diagonal map-depth projection with exact boundary ownership, unknown-position
+  preservation, and normalized zero symmetry.
+- Implemented deterministic current ally/enemy observations with unique hero identities, requester exclusion, fresh
+  connected-position precedence, minimap fallback, and visible-enemy lower-bound semantics.
+- Implemented requester readiness, health-preserving stale `StructureRisk`, healthy-timeline damage activity,
+  high-ground criticality, compact team-cluster enumeration/ranking, isolation, and missing-enemy signals.
+- Implemented coarse defense arrival and the confirmed-only defender model: ready requester after arrival, ready
+  connected allies already near, separate uncertain positional support, no remote teammate commitment, conservative
+  numerical comparison, outer blockers, high-ground penalties, and Ancient last stand.
+- Implemented explicit unavailable and hold outcomes plus exactly four immutable ordered safety candidates with
+  pre-score blockers, risks, unknown propagation, and deterministic guardrails.
+- Added intent coverage for low/unknown connected readiness, confirmed disables, low mana, low-health requester
+  arrival, remote allies, ambiguous/duplicate enemies, stale pressure, unsafe regroup, and deep isolated farming.
+- Kept numeric scoring, confidence, recommendation selection, Russian rendering, advice memory, application
+  orchestration, runtime exposure, and transport integration out of scope.
+
+Verification evidence (`2026-07-21`):
+
+- `npm run check` — passed, including typecheck, ESLint, Prettier, `24` Jest suites / `219` tests, ESM build, and the
+  built-runtime smoke test;
+- refreshed code graph confirms Lost remains an internal domain/infrastructure boundary with no new service or
+  transport layer;
+- `git diff --check` — passed.
 
 Exit criteria:
 

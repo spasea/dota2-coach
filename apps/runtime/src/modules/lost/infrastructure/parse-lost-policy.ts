@@ -29,6 +29,12 @@ const lostPolicyDocumentSchema = z
       })
       .strict()
       .refine((structureRisk) => structureRisk.critical_health_percent < structureRisk.pressured_health_percent),
+    readiness: z
+      .object({
+        low_health_percent: z.number().finite().gt(0).lt(100),
+        low_mana_percent: z.number().finite().gt(0).lt(100),
+      })
+      .strict(),
   })
   .strict();
 
@@ -62,6 +68,10 @@ export function parseLostPolicy(yaml: string): LostPolicy {
       criticalHealthPercent: result.data.structure_risk.critical_health_percent,
       pressuredHealthPercent: result.data.structure_risk.pressured_health_percent,
       repeatedActiveDamageEvents: result.data.structure_risk.repeated_active_damage_events,
+    }),
+    readiness: Object.freeze({
+      lowHealthPercent: result.data.readiness.low_health_percent,
+      lowManaPercent: result.data.readiness.low_mana_percent,
     }),
   });
 }

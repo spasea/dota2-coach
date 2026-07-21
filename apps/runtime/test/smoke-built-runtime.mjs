@@ -35,6 +35,9 @@ structure_risk:
   critical_health_percent: 25
   pressured_health_percent: 60
   repeated_active_damage_events: 2
+readiness:
+  low_health_percent: 25
+  low_mana_percent: 20
 `;
 
 function waitForLog(child, lines, message, timeoutMs = 5_000) {

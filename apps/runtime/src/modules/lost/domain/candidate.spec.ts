@@ -61,9 +61,10 @@ describe('Lost hard outcomes', () => {
 
 describe('Lost candidate safety', () => {
   it('returns exactly the four fixed directional candidates in deterministic order', () => {
+    const signals = deepFreeze(readySignals());
     const result = evaluateCandidateSafety({
       contextResult: readyContextResult(),
-      signals: readySignals(),
+      signals,
     });
 
     expect(result).toMatchObject({
@@ -71,9 +72,8 @@ describe('Lost candidate safety', () => {
       candidates: [{ action: 'RESET' }, { action: 'DEFEND' }, { action: 'REGROUP' }, { action: 'FARM_SAFELY' }],
     });
 
-    expect(Object.isFrozen(result)).toBe(true);
-    expect(result.status === 'candidates' && Object.isFrozen(result.candidates)).toBe(true);
-    expect(result.status === 'candidates' && result.candidates.every(Object.isFrozen)).toBe(true);
+    expect(signals).toEqual(readySignals());
+    expectDeepFrozen(result);
   });
 
   it('blocks solo T2 defense against three visible enemies before scoring', () => {
@@ -294,4 +294,28 @@ function expectCandidate(signals: LostSignals, action: LostAction, context = cre
   }
 
   return expect(result.candidates.find((candidate) => candidate.action === action));
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) {
+    return value;
+  }
+
+  for (const nested of Object.values(value)) {
+    deepFreeze(nested);
+  }
+
+  return Object.freeze(value);
+}
+
+function expectDeepFrozen(value: unknown): void {
+  if (typeof value !== 'object' || value === null) {
+    return;
+  }
+
+  expect(Object.isFrozen(value)).toBe(true);
+
+  for (const nested of Object.values(value)) {
+    expectDeepFrozen(nested);
+  }
 }
