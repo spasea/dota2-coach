@@ -12,6 +12,7 @@ const trustedIdentity: TrustedClientIdentity = Object.freeze({
 
 const registry: TrustedClientRegistry = {
   resolveToken: (gsiToken) => (gsiToken === 'known-gsi-token' ? trustedIdentity : null),
+  resolveDiscordUserId: () => null,
 };
 
 describe('GSI client authentication', () => {

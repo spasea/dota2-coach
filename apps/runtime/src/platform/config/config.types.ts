@@ -9,6 +9,7 @@ export type TrustedClientIdentity = Readonly<{
 
 export type TrustedClientRegistry = Readonly<{
   resolveToken: (gsiToken: string) => TrustedClientIdentity | null;
+  resolveDiscordUserId: (discordUserId: string) => TrustedClientIdentity | null;
 }>;
 
 export type ClientConfigYamlSources = Readonly<{

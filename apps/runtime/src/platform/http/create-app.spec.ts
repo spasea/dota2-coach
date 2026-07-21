@@ -29,6 +29,7 @@ function createTestContext() {
   const recordClientSnapshot = jest.fn<RecordClientSnapshot>();
   const trustedClientRegistry: TrustedClientRegistry = {
     resolveToken: (gsiToken) => (gsiToken === knownGsiToken ? trustedIdentity : null),
+    resolveDiscordUserId: () => null,
   };
   const app = createApp({
     gsiBodyLimitBytes,
@@ -98,6 +99,26 @@ describe('HTTP application', () => {
     expect(unknownTokenResponse.status).toBe(missingTokenResponse.status);
     expect(unknownTokenResponse.body).toEqual(missingTokenResponse.body);
     expect(recordClientSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('keeps the successful ingest contract for malformed optional nested fields', async () => {
+    const { app, recordClientSnapshot } = createTestContext();
+    const snapshot = {
+      map: { matchid: '8902657168', game_time: 'not-a-number' },
+      events: [{ event_type: 'generic_event', data: '{invalid-json' }],
+    };
+
+    const response = await request(app)
+      .post('/gsi')
+      .set('Content-Type', 'application/json')
+      .send({ auth: { token: knownGsiToken }, ...snapshot });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toBe('');
+    expect(recordClientSnapshot).toHaveBeenCalledWith({
+      identity: trustedIdentity,
+      snapshot,
+    });
   });
 
   it.each([

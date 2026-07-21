@@ -61,6 +61,16 @@ describe('trusted client configuration', () => {
     expect(registry.resolveToken(gsiToken)?.clientId).toBe('client-01');
   });
 
+  it('resolves the same safe identity by configured Discord user ID', () => {
+    const registry = parseClientConfig(validSources);
+
+    const identity = registry.resolveDiscordUserId('123456789012345678');
+
+    expect(identity).toEqual(registry.resolveToken(gsiToken));
+    expect(identity).not.toHaveProperty('gsiToken');
+    expect(registry.resolveDiscordUserId('987654321098765432')).toBeNull();
+  });
+
   it('reports invalid YAML without exposing its contents', () => {
     const secretValue = 'must-never-appear-in-an-error';
     const error = captureConfigurationError(() =>

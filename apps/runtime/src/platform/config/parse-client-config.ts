@@ -118,5 +118,6 @@ export function parseClientConfig(sources: ClientConfigYamlSources): TrustedClie
 
   return Object.freeze({
     resolveToken: (gsiToken: string) => identitiesByTokenDigest.get(digestToken(gsiToken)) ?? null,
+    resolveDiscordUserId: () => null,
   });
 }

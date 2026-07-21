@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Normalization and Client State RED (not-started)`
+- Current implementation phase: `Phase 2 — Normalization and Client State GREEN (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -554,7 +554,7 @@ generic manager, and do not create empty future module directories.
 | Milestone                               | RED phase | GREEN phase | Status        |
 | --------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                   | —         | Phase 0     | `completed`   |
-| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `not-started` |
+| M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `in-progress` |
 | M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `not-started` |
 | M3. Compact memory and coaching context | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff            | —         | Phase 7     | `not-started` |
@@ -607,9 +607,31 @@ Exit criteria:
 
 ## Phase 1 — Normalization and Client State RED
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `red-expected`
+
+Completed:
+
+- Inspected only targeted projections from the local 2,125-snapshot capture with `jq`; the large capture was not
+  copied, committed, or emitted wholesale.
+- Added small sanitized heartbeat, full-state, malformed-nested, minimap, building, and supported-event fixtures based
+  on the confirmed capture shapes. Chat text used by the discard guard is synthetic.
+- Added immutable normalized snapshot, event-union, normalized client-state, client-directory, and normalized-store
+  boundary types under `modules/match`.
+- Added explicit partial raw GSI adapter types and an unwired normalizer that intentionally returns the empty normalized
+  baseline until Phase 2.
+- Added an unwired normalized latest-state store and safe Discord identity lookup seam with intentional no-op/null
+  implementations for Phase 2.
+- Added RED specs for heartbeat/full/invalid normalization, deep immutability, per-client normalized state replacement,
+  store-owned copies, and safe Discord identity resolution.
+- Added a green HTTP regression proving malformed optional nested fields retain the authenticated empty `200 OK`
+  contract while Phase 1 leaves the production raw ingest path unchanged.
+- Verified `typecheck`, ESLint, Prettier, the ESM build, built-runtime smoke, and `git diff --check` are green.
+- Verified the prior regression set remains green: 9 suites, 57 tests passed, with only the new Discord RED test
+  excluded by name and the two new RED suites excluded by path.
+- Recorded the intentional RED result: 3 suites and 6 tests fail only on the empty normalizer, no-op normalized store,
+  and null Discord lookup; 8 suites and 58 tests pass in the complete run.
 
 Resolved before starting:
 
