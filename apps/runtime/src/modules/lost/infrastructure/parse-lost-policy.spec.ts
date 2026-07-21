@@ -16,10 +16,13 @@ structure_risk:
   critical_health_percent: 25
   pressured_health_percent: 60
   repeated_active_damage_events: 2
+readiness:
+  low_health_percent: 25
+  low_mana_percent: 20
 `;
 
 describe('Lost policy parsing', () => {
-  it('parses the complete context-only schema into a deeply immutable domain policy', () => {
+  it('parses the complete signal-policy schema into a deeply immutable domain policy', () => {
     const policy = parseLostPolicy(validPolicyYaml);
 
     expect(policy).toEqual({
@@ -38,11 +41,16 @@ describe('Lost policy parsing', () => {
         pressuredHealthPercent: 60,
         repeatedActiveDamageEvents: 2,
       },
+      readiness: {
+        lowHealthPercent: 25,
+        lowManaPercent: 20,
+      },
     });
     expect(Object.isFrozen(policy)).toBe(true);
     expect(Object.isFrozen(policy.mapDepth)).toBe(true);
     expect(Object.isFrozen(policy.proximity)).toBe(true);
     expect(Object.isFrozen(policy.structureRisk)).toBe(true);
+    expect(Object.isFrozen(Reflect.get(policy, 'readiness'))).toBe(true);
   });
 
   it.each([
@@ -87,5 +95,18 @@ describe('Lost policy parsing', () => {
     expect(error).toBeInstanceOf(ConfigurationError);
     expect(error).toMatchObject({ source: 'lost_policy', stage: 'validation' });
     expect(String(error)).not.toContain(yaml);
+  });
+
+  it.each([
+    ['missing readiness section', validPolicyYaml.replace(/readiness:[\s\S]*$/, '')],
+    ['zero health threshold', validPolicyYaml.replace('low_health_percent: 25', 'low_health_percent: 0')],
+    ['100% health threshold', validPolicyYaml.replace('low_health_percent: 25', 'low_health_percent: 100')],
+    ['zero mana threshold', validPolicyYaml.replace('low_mana_percent: 20', 'low_mana_percent: 0')],
+    ['100% mana threshold', validPolicyYaml.replace('low_mana_percent: 20', 'low_mana_percent: 100')],
+    ['unknown readiness key', `${validPolicyYaml}  secret_weight: 1\n`],
+  ])('rejects %s for the signal-policy contract', (_caseName, yaml) => {
+    expect(() => parseLostPolicy(yaml)).toThrow(
+      expect.objectContaining({ source: 'lost_policy', stage: 'validation' })
+    );
   });
 });

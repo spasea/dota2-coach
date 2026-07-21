@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 2 — Lost Context Enablement GREEN (completed)`
+- Current implementation phase: `Phase 3 — Lost Signals and Candidate Safety RED (red-expected)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -148,6 +148,11 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     that depend on them.
 35. A team cluster requires at least two allied heroes in the configured radius. One nearby ally is proximity evidence,
     not a team cluster.
+    The requester is excluded from destination-cluster membership. A compact candidate requires every member pair to
+    be within the inclusive radius. Among safe candidates, selection prefers greater unique membership, then the
+    presence of at least one fresh connected member as a binary tie-break, then smaller maximum pair distance, then a
+    lexicographically ordered hero-name key. Additional connected members do not add selection weight, and connected
+    presence never fabricates teammate intent or future participation.
 36. Minimap duplicates/possible illusions never increase unique hero counts. Existing ambiguous enemy observations
     lower confidence rather than creating precise numerical claims.
 37. Visible enemy count is a lower bound. Zero visible enemies is not positive proof that an area is safe.
@@ -188,6 +193,10 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 53. Own-structure condition is represented by a non-temporal `StructureRisk` level: `stable`, `pressured`, or
     `critical`. It is derived from structure kind, current health percent, active/recent/repeated damage, damage-event
     counts, last-damage age, and timeline availability. It never estimates time to destruction or compares countdowns.
+    `critical` means health at or below the critical threshold, repeated active damage at or above the configured
+    event count, or any active damage to T3/T4/barracks/Ancient. `pressured` means health at or below the pressured
+    threshold or any active/recent damage when `critical` does not apply. Otherwise it is `stable`. A stale or
+    rebaselining timeline may retain health-based risk but cannot claim current-damage urgency.
 54. For T1/T2, `DEFEND` is blocked when the requester would arrive isolated and the visible enemy lower bound exceeds
     the ready defenders currently near the structure including the requester after arrival.
 55. For T3 and barracks, the same mismatch is a strong penalty and may block medium-confidence advice when evidence is
@@ -760,6 +769,18 @@ structure_risk:
 These are the first implementation defaults resolved from the Phase 1 evidence below. Phase 2 commits the equivalent
 valid local context YAML document. Production code never accepts placeholder or missing values.
 
+Phase 3 fixes the readiness extension consumed for the first time in Phase 4:
+
+```yaml
+readiness:
+  low_health_percent: 25
+  low_mana_percent: 20
+```
+
+Both thresholds are finite and strictly inside `0..100`; equality is classified as low. Low health is strong reset
+evidence. Low mana is supporting evidence only and cannot independently force `RESET`, block another action, or create
+`HOLD_AND_WAIT`.
+
 Phase 3 resolves readiness thresholds and Phase 4 adds them when the first Lost signals consume them. Phase 5 then
 resolves action bases, fixed reason-code weights, confidence floors, and stability values from approved scenarios.
 Phase 6 extends the parser and tracked YAML atomically with those sections, including
@@ -942,7 +963,7 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 | -------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                        | —         | Phase 0     | `completed`   |
 | M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`   |
-| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `not-started` |
+| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `in-progress` |
 | M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
 
@@ -1142,7 +1163,7 @@ Exit criteria:
 
 ## Phase 3 — Lost Signals and Candidate Safety RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
 
@@ -1181,6 +1202,37 @@ Use scenario-first specs for:
 - requester deep with three missing enemies;
 - requester far from a safe ready allied cluster;
 - stale timeline with current visibility but no current-damage claim.
+
+Completed:
+
+- Fixed policy-backed inclusive readiness defaults at `25%` HP and `20%` mana; low mana remains supporting evidence
+  and cannot independently force `RESET`, `HOLD_AND_WAIT`, or block another action.
+- Added compile-safe, pure Lost seams for mirrored map-depth projection, requester/structure/cluster/defense/isolation
+  signals, hard outcomes, and exactly four ordered directional candidates.
+- Added RED specs for Radiant/Dire boundary symmetry, unknown positions, immutable outputs, readiness thresholds,
+  non-temporal `StructureRisk`, and stale/rebaselining damage semantics.
+- Added deterministic cluster specs covering unique membership, inclusive pairwise radius, requester exclusion, larger
+  cluster precedence, binary connected-presence tie-breaking, compactness, and unsafe destination rejection.
+- Added defense-feasibility and safety specs for the approved Lich scenarios, current versus remote defenders,
+  unconnected positional support, visible-enemy lower bounds, outer-tower blockers, high-ground penalties, Ancient
+  last stand, deep isolation, and missing enemies.
+- Added hard-gate and candidate specs for unavailable context, inactive game, dead/paused hold behavior, insufficient
+  evidence, local low-HP reset, supporting low mana, stale pressure, regroup safety, and conservative farm guardrails.
+- Extended the parser contract specs with the required readiness section and strict `0 < threshold < 100` validation;
+  the parser and tracked YAML remain intentionally unchanged until Phase 4 GREEN.
+- Kept scoring, confidence, Russian rendering, advice persistence, recommendation orchestration, public runtime wiring,
+  and transport integration out of scope.
+
+Verification evidence (`2026-07-21`):
+
+- `npm run typecheck` — passed;
+- `npm run lint` — passed;
+- `npm run format:check` — passed;
+- `npm run build` — passed;
+- `npm run test:smoke` — passed against the built runtime;
+- `npm test -- --runInBand` — intentional RED: `4` suites / `69` assertions fail only at the approved missing Phase 4
+  behavior; `20` suites / `144` tests pass;
+- `git diff --check` — passed.
 
 Exit criteria:
 

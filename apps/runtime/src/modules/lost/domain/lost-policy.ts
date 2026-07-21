@@ -15,9 +15,16 @@ export type LostStructureRiskPolicy = Readonly<{
   repeatedActiveDamageEvents: number;
 }>;
 
+export type LostReadinessPolicy = Readonly<{
+  lowHealthPercent: number;
+  lowManaPercent: number;
+}>;
+
 export type LostPolicy = Readonly<{
   schemaVersion: 1;
   mapDepth: LostMapDepthPolicy;
   proximity: LostProximityPolicy;
   structureRisk: LostStructureRiskPolicy;
 }>;
+
+export type LostSignalPolicy = LostPolicy & Readonly<{ readiness: LostReadinessPolicy }>;
