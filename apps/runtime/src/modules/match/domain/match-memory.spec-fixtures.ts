@@ -1,6 +1,6 @@
 import type { MatchSession } from './match-session.js';
 import type { NormalizedClientState } from './normalized-client-state.js';
-import type { NormalizedHeroObservation, Team } from './normalized-snapshot.js';
+import type { NormalizedHeroObservation, NormalizedStructureObservation, Team } from './normalized-snapshot.js';
 
 type StateInput = Readonly<{
   clientId?: string;
@@ -8,6 +8,7 @@ type StateInput = Readonly<{
   matchId?: string;
   team?: Team;
   minimapHeroes?: readonly NormalizedHeroObservation[];
+  minimapStructures?: readonly NormalizedStructureObservation[];
 }>;
 
 export function createNormalizedClientState(input: StateInput = {}): NormalizedClientState {
@@ -49,12 +50,24 @@ export function createNormalizedClientState(input: StateInput = {}): NormalizedC
         heroName: 'npc_dota_hero_invoker',
         position: { x: 100, y: 200 },
         alive: true,
+        respawnSeconds: null,
+        buybackCost: null,
+        buybackCooldown: null,
         healthPercent: 75,
         manaPercent: 60,
         level: 10,
         xp: 5_000,
+        status: {
+          stunned: null,
+          silenced: null,
+          hexed: null,
+          muted: null,
+          disarmed: null,
+        },
+        teleportReadiness: { status: 'unknown' },
       },
       minimapHeroes: input.minimapHeroes ?? [],
+      minimapStructures: input.minimapStructures ?? [],
       buildings: [],
       events: [],
     },

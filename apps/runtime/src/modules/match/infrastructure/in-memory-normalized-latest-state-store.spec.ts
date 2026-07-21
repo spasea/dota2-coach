@@ -10,6 +10,7 @@ const emptySnapshot: NormalizedClientSnapshot = {
   player: null,
   hero: null,
   minimapHeroes: [],
+  minimapStructures: [],
   buildings: [],
   events: [],
 };

@@ -3,6 +3,7 @@ import type { NormalizedBuildingObservation } from './normalized-snapshot.js';
 
 export type BuildingHealthEvent = Readonly<{
   buildingId: string;
+  structureId: string;
   observedAt: number;
   gameTime: number | null;
   previousHealth: number;
@@ -14,6 +15,7 @@ export type BuildingHealthEvent = Readonly<{
 
 export type BuildingTemporalState = Readonly<{
   buildingId: string;
+  structureId: string;
   currentHealth: number;
   maxHealth: number;
   lastObservedAt: number;
@@ -32,11 +34,15 @@ export type BuildingWindowPolicy = Readonly<{
 
 export type BuildingPressure = Readonly<{
   buildingId: string;
+  structureId: string;
   currentHealth: number;
   maxHealth: number;
   activeDamage: number;
+  activeDamageEvents: number;
   recentDamage: number;
+  recentDamageEvents: number;
   pressureDamage: number;
+  lastDamageAgeMs: number | null;
 }>;
 
 export type BuildingPressureAvailability =
@@ -89,6 +95,7 @@ export function reduceBuildingMemory(input: ReduceBuildingMemoryInput): Building
         observation.buildingId,
         Object.freeze({
           buildingId: observation.buildingId,
+          structureId: observation.structureId,
           currentHealth: observation.health,
           maxHealth: observation.maxHealth,
           lastObservedAt: input.receivedAt,
@@ -105,6 +112,7 @@ export function reduceBuildingMemory(input: ReduceBuildingMemoryInput): Building
     const event: BuildingHealthEvent | null = recordsDamage
       ? Object.freeze({
           buildingId: observation.buildingId,
+          structureId: observation.structureId,
           observedAt: input.receivedAt,
           gameTime: input.gameTime,
           previousHealth: previous.currentHealth,
@@ -119,6 +127,7 @@ export function reduceBuildingMemory(input: ReduceBuildingMemoryInput): Building
       observation.buildingId,
       Object.freeze({
         buildingId: observation.buildingId,
+        structureId: observation.structureId,
         currentHealth: observation.health,
         maxHealth: observation.maxHealth,
         lastObservedAt: input.receivedAt,
@@ -186,11 +195,15 @@ export function readBuildingPressure(input: ReadBuildingPressureInput): Building
 
     return Object.freeze({
       buildingId: building.buildingId,
+      structureId: building.structureId,
       currentHealth: building.currentHealth,
       maxHealth: building.maxHealth,
       activeDamage,
+      activeDamageEvents: 0,
       recentDamage,
+      recentDamageEvents: 0,
       pressureDamage,
+      lastDamageAgeMs: null,
     });
   });
 

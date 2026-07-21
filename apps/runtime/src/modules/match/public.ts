@@ -38,12 +38,15 @@ export type {
   NormalizedGenericEventData,
   NormalizedHeroFacts,
   NormalizedHeroObservation,
+  NormalizedHeroStatus,
   NormalizedMatchEvent,
   NormalizedMatchFacts,
   NormalizedPlayerFacts,
   NormalizedRoshanKilledEvent,
+  NormalizedStructureObservation,
   Position,
   Team,
+  TeleportReadiness,
 } from './domain/normalized-snapshot.js';
 export { createInMemoryActiveMatchStore } from './infrastructure/in-memory-active-match-store.js';
 export { createInMemoryNormalizedLatestStateStore } from './infrastructure/in-memory-normalized-latest-state-store.js';

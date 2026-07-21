@@ -29,14 +29,30 @@ export type NormalizedPlayerFacts = Readonly<{
   goldFromShared: number | null;
 }>;
 
+export type TeleportReadiness =
+  Readonly<{ status: 'ready' }> | Readonly<{ status: 'unavailable' }> | Readonly<{ status: 'unknown' }>;
+
+export type NormalizedHeroStatus = Readonly<{
+  stunned: boolean | null;
+  silenced: boolean | null;
+  hexed: boolean | null;
+  muted: boolean | null;
+  disarmed: boolean | null;
+}>;
+
 export type NormalizedHeroFacts = Readonly<{
   heroName: string | null;
   position: Position | null;
   alive: boolean | null;
+  respawnSeconds: number | null;
+  buybackCost: number | null;
+  buybackCooldown: number | null;
   healthPercent: number | null;
   manaPercent: number | null;
   level: number | null;
   xp: number | null;
+  status: NormalizedHeroStatus;
+  teleportReadiness: TeleportReadiness;
 }>;
 
 export type HeroMarkerKind = 'self' | 'standard' | 'enemy' | 'invisible' | 'other';
@@ -50,9 +66,18 @@ export type NormalizedHeroObservation = Readonly<{
 
 export type NormalizedBuildingObservation = Readonly<{
   buildingId: string;
+  structureId: string;
   team: Team;
   health: number | null;
   maxHealth: number | null;
+}>;
+
+export type NormalizedStructureObservation = Readonly<{
+  structureId: string;
+  team: Team;
+  kind: 'tower' | 'barracks' | 'ancient';
+  tier: 1 | 2 | 3 | 4 | null;
+  positions: readonly Position[];
 }>;
 
 export type NormalizedGenericEventData = Readonly<{
@@ -107,6 +132,7 @@ export type NormalizedClientSnapshot = Readonly<{
   player: NormalizedPlayerFacts | null;
   hero: NormalizedHeroFacts | null;
   minimapHeroes: readonly NormalizedHeroObservation[];
+  minimapStructures: readonly NormalizedStructureObservation[];
   buildings: readonly NormalizedBuildingObservation[];
   events: readonly NormalizedMatchEvent[];
 }>;

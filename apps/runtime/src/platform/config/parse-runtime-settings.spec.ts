@@ -6,6 +6,7 @@ import { parseRuntimeSettings } from './parse-runtime-settings.js';
 const requiredEnvironment = {
   CLIENT_CONFIG_PATH: '/etc/dota2-coach/clients.yaml',
   CLIENT_CREDENTIALS_PATH: '/run/secrets/dota2-coach/client-credentials.yaml',
+  LOST_POLICY_PATH: '/etc/dota2-coach/lost-policy.yaml',
 };
 
 describe('runtime process settings', () => {
@@ -15,6 +16,7 @@ describe('runtime process settings', () => {
     expect(settings).toEqual({
       clientConfigPath: requiredEnvironment.CLIENT_CONFIG_PATH,
       clientCredentialsPath: requiredEnvironment.CLIENT_CREDENTIALS_PATH,
+      lostPolicyPath: requiredEnvironment.LOST_POLICY_PATH,
       gsiFreshnessMs: 5000,
       host: '0.0.0.0',
       logLevel: 'info',
@@ -38,6 +40,7 @@ describe('runtime process settings', () => {
   it.each([
     ['missing public config path', { CLIENT_CREDENTIALS_PATH: requiredEnvironment.CLIENT_CREDENTIALS_PATH }],
     ['blank private config path', { ...requiredEnvironment, CLIENT_CREDENTIALS_PATH: ' ' }],
+    ['missing Lost policy path', { ...requiredEnvironment, LOST_POLICY_PATH: undefined }],
     ['invalid port', { ...requiredEnvironment, PORT: 'not-a-port' }],
     ['zero port', { ...requiredEnvironment, PORT: '0' }],
     ['out-of-range port', { ...requiredEnvironment, PORT: '65536' }],

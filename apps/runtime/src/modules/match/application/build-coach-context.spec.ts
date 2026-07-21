@@ -196,4 +196,57 @@ describe('ready coach context', () => {
       },
     });
   });
+
+  it('uses readiness and structures from one freshest shared snapshot without cross-client union', () => {
+    const requester = createNormalizedClientState({
+      clientId: 'client-01',
+      receivedAt: 5_000,
+      minimapStructures: [
+        {
+          structureId: 'radiant:tower:1:top',
+          team: 'radiant',
+          kind: 'tower',
+          tier: 1,
+          positions: [{ x: -6_336, y: 1_856 }],
+        },
+      ],
+    });
+    const teammate = createNormalizedClientState({
+      clientId: 'client-02',
+      receivedAt: 5_500,
+      minimapStructures: [
+        {
+          structureId: 'dire:tower:2:bot',
+          team: 'dire',
+          kind: 'tower',
+          tier: 2,
+          positions: [{ x: 6_400, y: 384 }],
+        },
+      ],
+    });
+    const activeState = createActiveMatchState(createMatchSession({ lastUsableSourceReceivedAt: 5_500 }));
+    const buildContext = createBuilder({ activeState, latestStates: [requester, teammate], now: 6_000 });
+
+    const result = buildContext({ discordUserId: requester.identity.discordUserId });
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      context: {
+        requester: {
+          snapshot: {
+            hero: {
+              teleportReadiness: { status: 'unknown' },
+            },
+          },
+        },
+        sharedSnapshot: {
+          minimapStructures: [
+            {
+              structureId: 'dire:tower:2:bot',
+            },
+          ],
+        },
+      },
+    });
+  });
 });

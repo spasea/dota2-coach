@@ -10,6 +10,7 @@ const knownGsiToken = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const environment = {
   CLIENT_CONFIG_PATH: '/etc/dota2-coach/clients.yaml',
   CLIENT_CREDENTIALS_PATH: '/run/secrets/dota2-coach/client-credentials.yaml',
+  LOST_POLICY_PATH: '/etc/dota2-coach/lost-policy.yaml',
   HOST: '127.0.0.1',
   LOG_LEVEL: 'silent',
   PORT: '3000',
@@ -28,11 +29,26 @@ client_credentials:
     discord_user_id: '123456789012345678'
     coach_alias: Local Player
 `;
+const lostPolicyYaml = `
+schema_version: 1
+map_depth:
+  center_half_width: 1200
+  base_boundary: 7700
+proximity:
+  structure_radius: 1600
+  team_cluster_radius: 1200
+  minimum_cluster_size: 2
+structure_risk:
+  critical_health_percent: 25
+  pressured_health_percent: 60
+  repeated_active_damage_events: 2
+`;
 
 function createDependencies(
   documents: ReadonlyMap<string, string> = new Map([
     [environment.CLIENT_CONFIG_PATH, clientsYaml],
     [environment.CLIENT_CREDENTIALS_PATH, credentialsYaml],
+    [environment.LOST_POLICY_PATH, lostPolicyYaml],
   ])
 ): CreateRuntimeDependencies {
   return {
@@ -104,5 +120,48 @@ describe('runtime composition', () => {
 
     expect(result).toBeInstanceOf(ConfigurationError);
     expect(result).toMatchObject({ source: 'credentials', stage: 'validation' });
+  });
+
+  it('loads the Lost policy source before a server can start', async () => {
+    const readPaths: string[] = [];
+    const dependencies = createDependencies();
+
+    await createRuntime(environment, {
+      ...dependencies,
+      readConfigText: (path) => {
+        readPaths.push(path);
+        return dependencies.readConfigText(path);
+      },
+    });
+
+    expect(readPaths).toContain(environment.LOST_POLICY_PATH);
+  });
+
+  it.each([
+    ['source', 'source', new Map([[environment.LOST_POLICY_PATH, lostPolicyYaml]])],
+    ['syntax', 'syntax', new Map([[environment.LOST_POLICY_PATH, 'schema_version: [']])],
+    ['validation', 'validation', new Map([[environment.LOST_POLICY_PATH, 'schema_version: 2']])],
+  ] as const)('maps Lost policy %s failures before server binding', async (failureKind, stage, policyDocuments) => {
+    const documents = new Map([
+      [environment.CLIENT_CONFIG_PATH, clientsYaml],
+      [environment.CLIENT_CREDENTIALS_PATH, credentialsYaml],
+      ...policyDocuments,
+    ]);
+    const dependencies = createDependencies(documents);
+    const readConfigText =
+      failureKind === 'source'
+        ? (path: string) =>
+            path === environment.LOST_POLICY_PATH
+              ? Promise.reject(new Error('synthetic read failure'))
+              : dependencies.readConfigText(path)
+        : dependencies.readConfigText;
+
+    const result = await createRuntime(environment, { ...dependencies, readConfigText }).catch(
+      (error: unknown) => error
+    );
+
+    expect(result).toBeInstanceOf(ConfigurationError);
+    expect(result).toMatchObject({ source: 'lost_policy', stage });
+    expect(String(result)).not.toContain(documents.get(environment.LOST_POLICY_PATH));
   });
 });

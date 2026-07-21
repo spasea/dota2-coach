@@ -31,10 +31,30 @@ export type RawGsiHero = Readonly<{
   xpos?: unknown;
   ypos?: unknown;
   alive?: unknown;
+  respawn_seconds?: unknown;
+  buyback_cost?: unknown;
+  buyback_cooldown?: unknown;
   health_percent?: unknown;
   mana_percent?: unknown;
   level?: unknown;
   xp?: unknown;
+  stunned?: unknown;
+  silenced?: unknown;
+  hexed?: unknown;
+  muted?: unknown;
+  disarmed?: unknown;
+}>;
+
+export type RawGsiItem = Readonly<{
+  name?: unknown;
+  cooldown?: unknown;
+  item_charges?: unknown;
+  charges?: unknown;
+  can_cast?: unknown;
+}>;
+
+export type RawGsiItems = Readonly<{
+  teleport0?: unknown;
 }>;
 
 export type RawGsiMinimapMarker = Readonly<{
@@ -69,6 +89,7 @@ export type RawGsiSnapshot = Readonly<Record<string, unknown>> &
     map?: unknown;
     player?: unknown;
     hero?: unknown;
+    items?: unknown;
     minimap?: unknown;
     buildings?: unknown;
     events?: unknown;

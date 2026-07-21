@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Lost Context Enablement RED (in-progress)`
+- Current implementation phase: `Phase 1 — Lost Context Enablement RED (red-expected)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -107,21 +107,27 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 
 19. The normalized local-hero facts add only current fields required by the approved Lost behavior:
     `respawnSeconds`, buyback cost/cooldown, confirmed disable booleans, and current TP readiness.
-20. TP readiness is normalized from the local client’s current TP slot/item facts. The normalized result distinguishes
-    ready, unavailable, and unknown; missing or malformed raw fields never become a fabricated ready TP.
+20. TP readiness is normalized from the local client’s current `items.teleport0` facts. A missing/malformed `items`
+    section is `unknown`; a valid section without `item_tpscroll` is `unavailable`; a confirmed scroll with missing or
+    malformed cooldown/charge facts is `unknown`; zero cooldown with a positive charge is `ready`, otherwise it is
+    `unavailable`. `item_charges` is preferred with `charges` as fallback, and conflicting values are `unknown`.
+    `can_cast` is ignored and hero life/disable state is evaluated separately.
 21. Broad ability readiness, complete inventory, stash/backpack semantics, item stats, and item-history milestones are
     not added for this Lost slice.
-22. The normalized shared snapshot adds conservative current structure markers with canonical structure identity,
-    team, kind/tier when derivable from the confirmed unit name, and position.
+22. The normalized shared snapshot adds conservative current structure areas with canonical structure identity, team,
+    kind/tier when derivable from the confirmed unit name, and one or more deterministically ordered positions.
 23. Current structure positions may include both teams, but exact HP/history remains available only for local-team
     structures through the existing `buildings` provider.
-24. Adapter-level canonicalization joins confirmed building provider IDs and minimap unit names without treating
-    frame-local `oN` keys as stable identities.
-25. Missing, malformed, duplicate, or unrecognized structure markers are ignored or represented as factual ambiguity;
-    they do not fail `POST /gsi`.
+24. Adapter-level canonicalization emits semantic team-relative identities without treating frame-local `oN` keys as
+    stable identities. `buildingId` owns a unique health history, while `structureId` owns a spatial area. They are
+    equal for ordinary structures; provider T4 top/bottom IDs remain distinct `buildingId` values and join one
+    team-scoped T4 `structureId`.
+25. Exact duplicate positions are deduplicated. Conflicting distinct positions discard a non-T4 structure area as
+    unknown; two confirmed same-name T4 positions are the explicit exception and form one area. Missing, malformed,
+    or unrecognized markers are ignored and never fail `POST /gsi`.
 26. Current minimap structures and heroes come from the same single freshest shared snapshot. Markers are never unioned
     across clients.
-27. Building-pressure output is extended factually with the minimum evidence required by Lost: last-damage age,
+27. Building-pressure output is extended factually with canonical `buildingId`/`structureId`, last-damage age,
     damage-event counts for the approved windows, and current/max health. It does not name an attacker or cause.
 28. Simultaneous structure damage and nearby visible enemies means “visible near the damaged structure,” not
     “confirmed attacking the structure.” Attacker, damage source, attack target, and aggro remain unavailable.
@@ -248,6 +254,8 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     non-finite values, negative radii, non-positive or inverted map-depth dimensions, invalid structure-risk
     percentages, or an invalid repeated-damage count fail startup before port binding through the established
     configuration-error path.
+    Missing `LOST_POLICY_PATH` is `process/validation`; file-read, YAML, and semantic failures are respectively
+    `lost_policy/source`, `lost_policy/syntax`, and `lost_policy/validation`.
     Phase 3–4 extends it with readiness-signal thresholds; Phase 5–6 extends it atomically with the
     scoring/confidence/stability fields.
 85. The parsed `LostPolicy` is deeply immutable. Hot reload and in-match policy changes are excluded.
@@ -459,8 +467,8 @@ may appear as a factual reason but never orders requests. Tests use fake clocks 
 ### Public module APIs
 
 - `modules/match/public.ts` exports only the additional factual types needed by GSI and Lost.
-- `modules/lost/public.ts` exports `createRecommendLostAction`, its command/result types, and infrastructure factories
-  required by bootstrap.
+- `modules/lost/public.ts` initially exports the policy contract/parser required by bootstrap and is extended in
+  Phase 6 with `createRecommendLostAction` plus its command/result types.
 - Future Discord imports `lost/public.ts` and does not call Lost internals or reconstruct scoring itself.
 - `lost` never re-exports raw GSI, store internals, YAML document types, or mutable domain collections.
 
@@ -490,7 +498,15 @@ type NormalizedStructureObservation = Readonly<{
   team: Team;
   kind: "tower" | "barracks" | "ancient";
   tier: 1 | 2 | 3 | 4 | null;
-  position: Position;
+  positions: readonly Position[];
+}>;
+
+type NormalizedBuildingObservation = Readonly<{
+  buildingId: string;
+  structureId: string;
+  team: Team;
+  health: number | null;
+  maxHealth: number | null;
 }>;
 ```
 
@@ -500,6 +516,7 @@ are not added merely to make the shape appear complete.
 ```ts
 type BuildingPressure = Readonly<{
   buildingId: string;
+  structureId: string;
   currentHealth: number;
   maxHealth: number;
   activeDamage: number;
@@ -990,7 +1007,7 @@ Exit criteria:
 
 ## Phase 1 — Lost Context Enablement RED
 
-Status: `in-progress`
+Status: `red-expected`
 
 Target end state: `red-expected`
 
@@ -1027,10 +1044,31 @@ Add compile-safe seams and failing specs for:
 - unchanged GSI `200` response for partial/malformed optional fields;
 - `LOST_POLICY_PATH` process validation;
 - YAML syntax/schema/semantic failures and deeply immutable parsed policy;
-- tracked public local policy with no secret fields.
+- a public context-policy schema that rejects secret/unknown fields; the tracked local YAML is added in Phase 2.
 
 Keep production wiring compile-safe and preserve all existing behavior. Context RED specs may use unwired seams, but no
 Lost candidate, score, renderer, advice store, or runtime recommendation use case is implemented in this phase.
+
+Completed:
+
+- Added compile-safe Match/GSI contracts for requester readiness, semantic building/spatial identities, current
+  structure areas, and extended building-pressure evidence.
+- Added sanitized intent-driven RED specs for TP mapping, requester status, Radiant/Dire semantic identities, T4 area
+  handling, duplicate/conflicting markers, repeated damage evidence, and freshest-snapshot context selection.
+- Added the context-only `LostPolicy` domain contract, minimal `modules/lost/public.ts`, an unwired parser seam, and
+  strict RED specs for syntax, schema, semantics, immutability, and secret/unknown key rejection.
+- Added RED startup/process specs for required `LOST_POLICY_PATH` and safe `lost_policy` source/syntax/validation
+  failures before server binding.
+- Preserved empty `200 OK` ingest for malformed optional hero/item/structure facts and did not add Lost scoring,
+  candidates, rendering, storage, recommendation wiring, or a route.
+
+Verification evidence (`2026-07-21`):
+
+- `npm run typecheck` — passed;
+- `npm run lint` — passed;
+- `npm run format:check` — passed;
+- `npm test -- --runInBand` — intentional RED: `5` suites / `23` assertions fail only at the approved missing Phase 2
+  behavior; `16` suites / `116` tests pass.
 
 Exit criteria:
 

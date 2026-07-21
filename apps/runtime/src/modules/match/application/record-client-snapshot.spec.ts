@@ -42,6 +42,7 @@ describe('record client snapshot', () => {
       player: null,
       hero: null,
       minimapHeroes: [],
+      minimapStructures: [],
       buildings: [],
       events: [],
     };
@@ -115,6 +116,7 @@ describe('record client snapshot', () => {
       },
       hero: null,
       minimapHeroes: [],
+      minimapStructures: [],
       buildings: [],
       events: [],
     };

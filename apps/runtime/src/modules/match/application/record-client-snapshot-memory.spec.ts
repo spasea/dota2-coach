@@ -23,7 +23,8 @@ const enemy: NormalizedHeroObservation = {
   markerKind: 'enemy',
 };
 const building: NormalizedBuildingObservation = {
-  buildingId: 'radiant_tower1_mid',
+  buildingId: 'radiant:tower:1:mid',
+  structureId: 'radiant:tower:1:mid',
   team: 'radiant',
   health: 1_600,
   maxHealth: 1_800,

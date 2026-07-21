@@ -1,4 +1,4 @@
-export type ConfigurationSource = 'process' | 'clients' | 'credentials' | 'combined';
+export type ConfigurationSource = 'process' | 'clients' | 'credentials' | 'combined' | 'lost_policy';
 export type ConfigurationStage = 'source' | 'syntax' | 'validation';
 
 type ConfigurationErrorContext = Readonly<{

@@ -167,3 +167,101 @@ export const malformedNestedGsiSnapshot = {
     },
   ],
 } as const;
+
+export const lostContextGsiSnapshot = {
+  hero: {
+    name: 'npc_dota_hero_lich',
+    xpos: 4_859,
+    ypos: -6_379,
+    alive: true,
+    respawn_seconds: 0,
+    buyback_cost: 1_506,
+    buyback_cooldown: 0,
+    health_percent: 78,
+    mana_percent: 61,
+    level: 14,
+    xp: 12_400,
+    stunned: false,
+    silenced: true,
+    hexed: false,
+    muted: false,
+    disarmed: true,
+  },
+  items: {
+    teleport0: {
+      name: 'item_tpscroll',
+      cooldown: 0,
+      item_charges: 2,
+      charges: 2,
+      can_cast: false,
+    },
+  },
+  minimap: {
+    radiantTower: {
+      image: 'minimap_tower45',
+      team: 2,
+      unitname: 'npc_dota_goodguys_tower1_top',
+      xpos: -6_336,
+      ypos: 1_856,
+    },
+    direTower: {
+      image: 'minimap_tower45',
+      team: 3,
+      unitname: 'npc_dota_badguys_tower2_bot',
+      xpos: 6_400,
+      ypos: 384,
+    },
+    radiantMeleeBarracks: {
+      image: 'minimap_radiant_rax',
+      team: 2,
+      unitname: 'npc_dota_goodguys_melee_rax_mid',
+      xpos: -4_672,
+      ypos: -4_552,
+    },
+    radiantAncient: {
+      image: 'minimap_radiant_ancient',
+      team: 2,
+      unitname: 'npc_dota_goodguys_fort',
+      xpos: -5_920,
+      ypos: -5_352,
+    },
+    radiantTower4Top: {
+      image: 'minimap_tower45',
+      team: 2,
+      unitname: 'npc_dota_goodguys_tower4',
+      xpos: -5_712,
+      ypos: -4_864,
+    },
+    radiantTower4Bot: {
+      image: 'minimap_tower45',
+      team: 2,
+      unitname: 'npc_dota_goodguys_tower4',
+      xpos: -5_392,
+      ypos: -5_192,
+    },
+  },
+  buildings: {
+    radiant: {
+      dota_goodguys_tower1_top: {
+        health: 1_200,
+        max_health: 1_800,
+      },
+      dota_goodguys_tower4_top: {
+        health: 2_100,
+        max_health: 2_600,
+      },
+      dota_goodguys_tower4_bot: {
+        health: 2_300,
+        max_health: 2_600,
+      },
+      good_rax_melee_mid: {
+        health: 1_700,
+        max_health: 2_200,
+      },
+      dota_goodguys_fort: {
+        health: 4_500,
+        max_health: 4_500,
+      },
+    },
+  },
+} as const;

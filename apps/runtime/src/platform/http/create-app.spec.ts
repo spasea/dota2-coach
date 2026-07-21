@@ -79,6 +79,7 @@ describe('HTTP application', () => {
           player: null,
           hero: null,
           minimapHeroes: [],
+          minimapStructures: [],
           buildings: [],
           events: [],
         },
@@ -113,6 +114,9 @@ describe('HTTP application', () => {
     const { app, recordClientSnapshot } = createTestContext();
     const snapshot = {
       map: { matchid: '8902657168', game_time: 'not-a-number' },
+      hero: { respawn_seconds: 'soon', stunned: 'false' },
+      items: { teleport0: { name: 'item_tpscroll', cooldown: 'ready', item_charges: {} } },
+      minimap: { o1: { unitname: 'npc_dota_goodguys_tower1_top', xpos: 'unknown', ypos: [] } },
       events: [{ event_type: 'generic_event', data: '{invalid-json' }],
     };
 
@@ -139,6 +143,7 @@ describe('HTTP application', () => {
         player: null,
         hero: null,
         minimapHeroes: [],
+        minimapStructures: [],
         buildings: [],
         events: [],
       },

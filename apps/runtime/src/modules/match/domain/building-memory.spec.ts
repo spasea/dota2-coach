@@ -8,7 +8,8 @@ import {
 } from './building-memory.js';
 
 const building = {
-  buildingId: 'radiant_tower1_mid',
+  buildingId: 'radiant:tower:1:mid',
+  structureId: 'radiant:tower:1:mid',
   team: 'radiant' as const,
   health: 1_600,
   maxHealth: 1_800,
@@ -28,6 +29,7 @@ describe('building memory', () => {
     expect(baseline).toEqual([
       {
         buildingId: building.buildingId,
+        structureId: building.structureId,
         currentHealth: 1_600,
         maxHealth: 1_800,
         lastObservedAt: 1_000,
@@ -50,6 +52,7 @@ describe('building memory', () => {
     expect(damaged[0]?.events).toEqual([
       {
         buildingId: building.buildingId,
+        structureId: building.structureId,
         observedAt: 2_000,
         gameTime: 121,
         previousHealth: 1_600,
@@ -120,11 +123,15 @@ describe('building memory', () => {
       value: [
         {
           buildingId: building.buildingId,
+          structureId: building.structureId,
           currentHealth: 1_500,
           maxHealth: 1_800,
           activeDamage: 1,
+          activeDamageEvents: 0,
           recentDamage: 6,
+          recentDamageEvents: 0,
           pressureDamage: 15,
+          lastDamageAgeMs: null,
         },
       ],
     });
@@ -148,11 +155,51 @@ describe('building memory', () => {
       reason: 'timeline_rebaselining',
     });
   });
+
+  it('reports repeated-damage counts and the latest damage age without changing half-open windows', () => {
+    const now = 40_000;
+    const state: BuildingTemporalState = {
+      ...createBuildingState(),
+      events: [
+        createDamageEvent(now - 5_999, 10),
+        createDamageEvent(now - 6_000, 20),
+        createDamageEvent(now - 14_999, 30),
+        createDamageEvent(now - 15_000, 40),
+      ],
+    };
+
+    const pressure = readBuildingPressure({
+      memory: [state],
+      now,
+      gameState: 'DOTA_GAMERULES_STATE_GAME_IN_PROGRESS',
+      timelineStatus: 'healthy',
+      windows: { activeDamageMs: 6_000, recentDamageMs: 15_000, pressureMs: 30_000 },
+    });
+
+    expect(pressure).toEqual({
+      status: 'available',
+      value: [
+        {
+          buildingId: building.buildingId,
+          structureId: building.structureId,
+          currentHealth: 1_600,
+          maxHealth: 1_800,
+          activeDamage: 10,
+          activeDamageEvents: 1,
+          recentDamage: 60,
+          recentDamageEvents: 3,
+          pressureDamage: 100,
+          lastDamageAgeMs: 5_999,
+        },
+      ],
+    });
+  });
 });
 
 function createBuildingState(): BuildingTemporalState {
   return {
     buildingId: building.buildingId,
+    structureId: building.structureId,
     currentHealth: 1_600,
     maxHealth: 1_800,
     lastObservedAt: 1_000,
@@ -165,6 +212,7 @@ function createBuildingState(): BuildingTemporalState {
 function createDamageEvent(observedAt: number, damage: number) {
   return {
     buildingId: building.buildingId,
+    structureId: building.structureId,
     observedAt,
     gameTime: 120,
     previousHealth: 1_800,

@@ -59,6 +59,7 @@ function createState(input: StateInput): NormalizedClientState {
       },
       hero: null,
       minimapHeroes: input.minimapHeroes ?? [],
+      minimapStructures: [],
       buildings: [],
       events: [],
     },

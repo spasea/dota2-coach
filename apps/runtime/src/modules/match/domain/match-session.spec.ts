@@ -60,6 +60,7 @@ function createState(input: StateInput = {}): NormalizedClientState {
       player,
       hero: null,
       minimapHeroes: [],
+      minimapStructures: [],
       buildings: [],
       events: [],
     },

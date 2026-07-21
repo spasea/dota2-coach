@@ -128,13 +128,34 @@ function normalizeHero(value: unknown): NormalizedClientSnapshot['hero'] {
     heroName: rawHeroName?.startsWith('npc_dota_hero_') === true ? rawHeroName : null,
     position: positionValue(hero.xpos, hero.ypos),
     alive: booleanValue(hero.alive),
+    respawnSeconds: null,
+    buybackCost: null,
+    buybackCooldown: null,
     healthPercent: finiteNumber(hero.health_percent),
     manaPercent: finiteNumber(hero.mana_percent),
     level: finiteNumber(hero.level),
     xp: finiteNumber(hero.xp),
+    status: {
+      stunned: null,
+      silenced: null,
+      hexed: null,
+      muted: null,
+      disarmed: null,
+    },
+    teleportReadiness: { status: 'unknown' as const },
   };
 
-  return Object.values(normalized).some((fact) => fact !== null) ? normalized : null;
+  const hasExistingFact = [
+    normalized.heroName,
+    normalized.position,
+    normalized.alive,
+    normalized.healthPercent,
+    normalized.manaPercent,
+    normalized.level,
+    normalized.xp,
+  ].some((fact) => fact !== null);
+
+  return hasExistingFact ? normalized : null;
 }
 
 function markerKindValue(image: unknown): HeroMarkerKind {
@@ -205,6 +226,7 @@ function normalizeBuildings(value: unknown): NormalizedBuildingObservation[] {
       const building = buildingValue as RawGsiBuilding;
       observations.push({
         buildingId,
+        structureId: buildingId,
         team,
         health: finiteNumber(building.health),
         maxHealth: finiteNumber(building.max_health),
@@ -320,6 +342,7 @@ export function normalizeGsiSnapshot(value: unknown): NormalizedClientSnapshot {
     player: normalizePlayer(snapshot.player),
     hero: normalizeHero(snapshot.hero),
     minimapHeroes: normalizeMinimapHeroes(snapshot.minimap),
+    minimapStructures: [],
     buildings: normalizeBuildings(snapshot.buildings),
     events: normalizeEvents(snapshot.events),
   });
