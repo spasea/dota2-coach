@@ -4,7 +4,11 @@ import { createServer } from 'node:http';
 
 import type { Logger } from 'pino';
 
-import { createInMemoryNormalizedLatestStateStore, createRecordClientSnapshot } from '../modules/match/public.js';
+import {
+  createInMemoryMatchSessionStore,
+  createInMemoryNormalizedLatestStateStore,
+  createRecordClientSnapshot,
+} from '../modules/match/public.js';
 import type { ReadConfigText } from '../platform/config/config.types.js';
 import { loadClientConfigSources } from '../platform/config/load-runtime-config.js';
 import { parseClientConfig } from '../platform/config/parse-client-config.js';
@@ -55,8 +59,14 @@ export async function createRuntime(
   );
   const trustedClientRegistry = parseClientConfig(configSources);
   const latestStateStore = createInMemoryNormalizedLatestStateStore();
+  const matchSessionStore = createInMemoryMatchSessionStore();
   const recordClientSnapshot = createRecordClientSnapshot({
+    freshnessMs: settings.gsiFreshnessMs,
     latestStateStore,
+    logLifecycleTransition: (metadata) => {
+      logger.info(metadata, 'match lifecycle transitioned');
+    },
+    matchSessionStore,
     monotonicNow: dependencies.monotonicNow,
   });
   const app = createApp({

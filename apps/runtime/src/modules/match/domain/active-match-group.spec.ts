@@ -115,6 +115,22 @@ describe('active match group selection', () => {
     expect(group.coverage).toBe(1);
   });
 
+  it('uses a fresh teammate for current state while the sticky source is stale', () => {
+    const staleSource = createState({ clientId: 'client-source', receivedAt: 1_000 });
+    const freshTeammate = createState({ clientId: 'client-teammate', receivedAt: 5_500 });
+
+    const group = selectActiveMatchGroup({
+      session,
+      latestStates: [staleSource, freshTeammate],
+      now: 6_000,
+      freshnessMs: FRESHNESS_MS,
+    });
+
+    expect(group.clients).toEqual([freshTeammate]);
+    expect(group.sharedState).toBe(freshTeammate);
+    expect(session.timelineSourceClientId).toBe('client-source');
+  });
+
   it('takes the current minimap from one freshest snapshot without unioning clients', () => {
     const sourceMarker: NormalizedHeroObservation = {
       heroName: 'npc_dota_hero_invoker',

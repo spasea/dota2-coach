@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 4 — Match Lifecycle and Timeline GREEN (not-started)`
+- Current implementation phase: `Phase 5 — Compact Memory and Coach Context RED (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -555,7 +555,7 @@ generic manager, and do not create empty future module directories.
 | --------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                   | —         | Phase 0     | `completed`   |
 | M1. Normalized client-state boundary    | Phase 1   | Phase 2     | `completed`   |
-| M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `not-started` |
+| M2. Match lifecycle and sticky timeline | Phase 3   | Phase 4     | `completed`   |
 | M3. Compact memory and coaching context | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff            | —         | Phase 7     | `not-started` |
 
@@ -798,9 +798,33 @@ Exit criteria:
 
 ## Phase 4 — Match Lifecycle and Timeline GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
+
+Completed:
+
+- Implemented the pure single-session state machine for usable-pair creation, sticky source ownership, same-session
+  continuation, foreign isolation, source-only rollover, post-game end, and incomplete-source preservation.
+- Implemented monotonic freshness evaluation with the exact stale boundary, fail-fast negative age handling, stale
+  ingest updates, source return baselines, restored health on the next consecutive source snapshot, and no gap delta
+  or automatic failover.
+- Implemented deterministic active-group selection from fresh same-match/same-team latest states, capped coverage,
+  lexicographic `clientId` ordering/tie-break, and one-snapshot current minimap selection.
+- Implemented the immutable in-memory active-session store behind the application port. Replace and clear operations
+  release the previous stored reference while storage mechanics remain independent from lifecycle decisions.
+- Wired the active-session store and configured `GSI_FRESHNESS_MS` into the existing normalized ingest command without
+  changing `POST /gsi`, adding an endpoint, timer, background task, or second ingest path.
+- Preserved source-only shared temporal routing through `timelineUpdate`; client-local and shared memory writers remain
+  deferred until the approved `MatchMemory` phase instead of adding empty reducer abstractions.
+- Added bounded lifecycle transition logging only when session identity or timeline status changes. Logged metadata is
+  restricted to `clientId`, `matchId`, team, and timeline status; snapshots, Discord identity, alias, token, positions,
+  inventory, event payloads, and chat are not passed to the logger.
+- Added store and application-level specs for owned immutable session state, reset/replacement, lifecycle wiring, and
+  non-repeating healthy-state logs. Added explicit coverage that a fresh teammate can provide current shared state
+  while the sticky timeline source remains stale.
+- Verified the complete runtime check is green: type checking, ESLint, Prettier, 13 Jest suites/84 tests, ESM build,
+  built-runtime smoke, and `git diff --check`. No intentional RED spec remains from Phase 3.
 
 Implement:
 

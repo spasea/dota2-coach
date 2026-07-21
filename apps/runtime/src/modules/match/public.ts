@@ -24,4 +24,5 @@ export type {
   Position,
   Team,
 } from './domain/normalized-snapshot.js';
+export { createInMemoryMatchSessionStore } from './infrastructure/in-memory-match-session-store.js';
 export { createInMemoryNormalizedLatestStateStore } from './infrastructure/in-memory-normalized-latest-state-store.js';
