@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 
 import type { Logger } from 'pino';
 
+import { parseLostPolicy } from '../modules/lost/public.js';
 import {
   createBuildCoachContext,
   createInMemoryActiveMatchStore,
@@ -14,6 +15,7 @@ import {
   type SetRequesterRoleOverride,
 } from '../modules/match/public.js';
 import type { ReadConfigText } from '../platform/config/config.types.js';
+import { ConfigurationError } from '../platform/config/configuration-error.js';
 import { loadClientConfigSources } from '../platform/config/load-runtime-config.js';
 import { parseClientConfig } from '../platform/config/parse-client-config.js';
 import { parseRuntimeSettings, type RuntimeLogLevel } from '../platform/config/parse-runtime-settings.js';
@@ -70,6 +72,16 @@ export async function createRuntime(
     dependencies.readConfigText
   );
   const trustedClientRegistry = parseClientConfig(configSources);
+  let lostPolicyYaml: string;
+
+  try {
+    lostPolicyYaml = await dependencies.readConfigText(settings.lostPolicyPath);
+  } catch {
+    throw new ConfigurationError({ source: 'lost_policy', stage: 'source' });
+  }
+
+  parseLostPolicy(lostPolicyYaml);
+
   const latestStateStore = createInMemoryNormalizedLatestStateStore();
   const activeMatchStore = createInMemoryActiveMatchStore();
   const recordClientSnapshot = createRecordClientSnapshot({

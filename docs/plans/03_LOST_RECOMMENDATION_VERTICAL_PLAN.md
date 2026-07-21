@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Lost Context Enablement RED (red-expected)`
+- Current implementation phase: `Phase 2 — Lost Context Enablement GREEN (completed)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -445,8 +445,9 @@ stores, clocks, loggers, config loaders, or integrations.
 ### Lost policy boundary
 
 The YAML adapter under `modules/lost/infrastructure` parses and validates one public document into the domain-owned
-`LostPolicy`. Bootstrap loads the source path and injects the result. Infrastructure knows YAML/Zod mechanics but does
-not invent fallback weights or coaching rules.
+`LostPolicy`. Bootstrap loads and validates the source before server binding. Until the first Lost policy consumer is
+implemented, the parsed result is intentionally not retained or exposed through `Runtime`; later phases inject it at
+the composition root. Infrastructure knows YAML/Zod mechanics but does not invent fallback weights or coaching rules.
 
 ### Advice-memory infrastructure
 
@@ -940,7 +941,7 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 | Milestone                                    | RED phase | GREEN phase | Status        |
 | -------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                        | —         | Phase 0     | `completed`   |
-| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `in-progress` |
+| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`   |
 | M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `not-started` |
 | M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
@@ -1079,7 +1080,7 @@ Exit criteria:
 
 ## Phase 2 — Lost Context Enablement GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
 
@@ -1104,6 +1105,33 @@ Verification:
 - malformed optional fields are discarded without state corruption;
 - public Lost policy contains no credentials or private identity data;
 - configuration failure occurs before server binding and does not expose file content.
+
+Completed:
+
+- Implemented tolerant requester respawn, buyback, confirmed-disable, and current TP-scroll normalization without
+  expanding into full inventory semantics or using `can_cast`.
+- Implemented Radiant/Dire semantic building and structure identities, exact marker deduplication, conflicting non-T4
+  suppression, and the approved two-position T4 area.
+- Implemented repeated active/recent damage-event counts and last-damage age while preserving baseline, stale, and
+  rebaselining behavior.
+- Confirmed the existing `BuildCoachContext` projection already exposes the new requester facts and one freshest
+  shared minimap snapshot without acquiring Lost meanings.
+- Implemented the strict versioned YAML/Zod Lost context-policy adapter, semantic validation, safe error mapping, and
+  deeply immutable domain result.
+- Added required `LOST_POLICY_PATH` process validation and validation-only startup loading before server creation. The
+  parsed policy is intentionally not retained or exposed until a later phase introduces its first consumer.
+- Added the tracked non-secret local policy, read-only Compose mount, and smoke-runtime fixture without adding
+  production manifests or secret data.
+- Kept Lost candidates, signals, scoring, rendering, advice memory, recommendation wiring, and transport routes out of
+  scope.
+
+Verification evidence (`2026-07-21`):
+
+- `npm run check` — passed, including typecheck, ESLint, Prettier, `21` Jest suites / `140` tests, ESM build, and the
+  built-runtime smoke test;
+- the tracked local Lost policy parses through the built production adapter;
+- the local Compose document parses as valid YAML;
+- `git diff --check` — passed.
 
 Exit criteria:
 

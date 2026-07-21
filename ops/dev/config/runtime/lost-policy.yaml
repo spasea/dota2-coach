@@ -1,0 +1,15 @@
+schema_version: 1
+
+map_depth:
+  center_half_width: 1200
+  base_boundary: 7700
+
+proximity:
+  structure_radius: 1600
+  team_cluster_radius: 1200
+  minimum_cluster_size: 2
+
+structure_risk:
+  critical_health_percent: 25
+  pressured_health_percent: 60
+  repeated_active_damage_events: 2

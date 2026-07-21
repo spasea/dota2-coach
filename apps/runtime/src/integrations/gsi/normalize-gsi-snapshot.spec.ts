@@ -92,15 +92,15 @@ describe('GSI snapshot normalization', () => {
     ]);
     expect(normalized.buildings).toEqual([
       {
-        buildingId: 'dota_goodguys_tower1_top',
-        structureId: 'dota_goodguys_tower1_top',
+        buildingId: 'radiant:tower:1:top',
+        structureId: 'radiant:tower:1:top',
         team: 'radiant',
         health: 1_800,
         maxHealth: 1_800,
       },
       {
-        buildingId: 'dota_goodguys_tower2_top',
-        structureId: 'dota_goodguys_tower2_top',
+        buildingId: 'radiant:tower:2:top',
+        structureId: 'radiant:tower:2:top',
         team: 'radiant',
         health: 2_500,
         maxHealth: 2_500,
@@ -229,6 +229,18 @@ describe('GSI snapshot normalization', () => {
         disarmed: true,
       },
       teleportReadiness: { status: 'ready' },
+    });
+  });
+
+  it('retains a hero fact set when only newly approved current facts are available', () => {
+    const normalized = normalizeGsiSnapshot({
+      hero: { stunned: true },
+    });
+
+    expect(normalized.hero).toMatchObject({
+      heroName: null,
+      status: { stunned: true },
+      teleportReadiness: { status: 'unknown' },
     });
   });
 

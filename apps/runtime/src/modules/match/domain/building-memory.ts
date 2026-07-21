@@ -172,8 +172,11 @@ export function readBuildingPressure(input: ReadBuildingPressureInput): Building
 
   const value = input.memory.map((building) => {
     let activeDamage = 0;
+    let activeDamageEvents = 0;
     let recentDamage = 0;
+    let recentDamageEvents = 0;
     let pressureDamage = 0;
+    let lastDamageAgeMs: number | null = null;
 
     for (const event of building.events) {
       const age = input.now - event.observedAt;
@@ -184,13 +187,17 @@ export function readBuildingPressure(input: ReadBuildingPressureInput): Building
 
       if (age < activeDamageMs) {
         activeDamage += event.damage;
+        activeDamageEvents += 1;
       }
       if (age < recentDamageMs) {
         recentDamage += event.damage;
+        recentDamageEvents += 1;
       }
       if (age < pressureMs) {
         pressureDamage += event.damage;
       }
+
+      lastDamageAgeMs = lastDamageAgeMs === null ? age : Math.min(lastDamageAgeMs, age);
     }
 
     return Object.freeze({
@@ -199,11 +206,11 @@ export function readBuildingPressure(input: ReadBuildingPressureInput): Building
       currentHealth: building.currentHealth,
       maxHealth: building.maxHealth,
       activeDamage,
-      activeDamageEvents: 0,
+      activeDamageEvents,
       recentDamage,
-      recentDamageEvents: 0,
+      recentDamageEvents,
       pressureDamage,
-      lastDamageAgeMs: null,
+      lastDamageAgeMs,
     });
   });
 

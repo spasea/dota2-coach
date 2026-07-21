@@ -17,6 +17,7 @@ services:
       GSI_FRESHNESS_MS: 5000
       HOST: 0.0.0.0
       LOG_LEVEL: ${RUNTIME_LOG_LEVEL:-info}
+      LOST_POLICY_PATH: /etc/dota2-coach/lost-policy.yaml
       PORT: 3000
     ports:
       - '${RUNTIME_PORT:-3000}:3000'
@@ -24,6 +25,7 @@ services:
       - ../../apps/runtime:/app
       - runtime_node_modules:/app/node_modules
       - ./config/runtime/clients.yaml:/etc/dota2-coach/clients.yaml:ro
+      - ./config/runtime/lost-policy.yaml:/etc/dota2-coach/lost-policy.yaml:ro
       - ./secrets/runtime/client-credentials.local.yaml:/run/secrets/dota2-coach/client-credentials.yaml:ro
     healthcheck:
       test: >-

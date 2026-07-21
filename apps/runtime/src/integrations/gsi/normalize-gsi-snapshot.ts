@@ -5,13 +5,17 @@ import type {
   NormalizedGenericEventData,
   NormalizedHeroObservation,
   NormalizedMatchEvent,
+  NormalizedStructureObservation,
   Position,
   Team,
+  TeleportReadiness,
 } from '../../modules/match/public.js';
 import type {
   RawGsiBuilding,
   RawGsiEvent,
   RawGsiHero,
+  RawGsiItem,
+  RawGsiItems,
   RawGsiMap,
   RawGsiMinimapMarker,
   RawGsiPlayer,
@@ -117,7 +121,47 @@ function normalizePlayer(value: unknown): NormalizedClientSnapshot['player'] {
   return Object.values(normalized).some((fact) => fact !== null) ? normalized : null;
 }
 
-function normalizeHero(value: unknown): NormalizedClientSnapshot['hero'] {
+function normalizeTeleportReadiness(value: unknown): TeleportReadiness {
+  if (!isRecord(value)) {
+    return { status: 'unknown' };
+  }
+
+  const items = value as RawGsiItems;
+
+  if (items.teleport0 === undefined) {
+    return { status: 'unavailable' };
+  }
+
+  if (!isRecord(items.teleport0)) {
+    return { status: 'unknown' };
+  }
+
+  const teleport = items.teleport0 as RawGsiItem;
+
+  if (nonEmptyString(teleport.name) !== 'item_tpscroll') {
+    return { status: 'unavailable' };
+  }
+
+  const cooldown = finiteNumber(teleport.cooldown);
+  const itemCharges = finiteNumber(teleport.item_charges);
+  const fallbackCharges = finiteNumber(teleport.charges);
+
+  if (itemCharges !== null && fallbackCharges !== null && itemCharges !== fallbackCharges) {
+    return { status: 'unknown' };
+  }
+
+  const charges = teleport.item_charges === undefined ? fallbackCharges : itemCharges;
+  const hasValidReadinessFacts =
+    cooldown !== null && cooldown >= 0 && charges !== null && Number.isInteger(charges) && charges >= 0;
+
+  if (!hasValidReadinessFacts) {
+    return { status: 'unknown' };
+  }
+
+  return cooldown === 0 && charges > 0 ? { status: 'ready' } : { status: 'unavailable' };
+}
+
+function normalizeHero(value: unknown, items: unknown): NormalizedClientSnapshot['hero'] {
   if (!isRecord(value)) {
     return null;
   }
@@ -128,34 +172,39 @@ function normalizeHero(value: unknown): NormalizedClientSnapshot['hero'] {
     heroName: rawHeroName?.startsWith('npc_dota_hero_') === true ? rawHeroName : null,
     position: positionValue(hero.xpos, hero.ypos),
     alive: booleanValue(hero.alive),
-    respawnSeconds: null,
-    buybackCost: null,
-    buybackCooldown: null,
+    respawnSeconds: finiteNumber(hero.respawn_seconds),
+    buybackCost: finiteNumber(hero.buyback_cost),
+    buybackCooldown: finiteNumber(hero.buyback_cooldown),
     healthPercent: finiteNumber(hero.health_percent),
     manaPercent: finiteNumber(hero.mana_percent),
     level: finiteNumber(hero.level),
     xp: finiteNumber(hero.xp),
     status: {
-      stunned: null,
-      silenced: null,
-      hexed: null,
-      muted: null,
-      disarmed: null,
+      stunned: booleanValue(hero.stunned),
+      silenced: booleanValue(hero.silenced),
+      hexed: booleanValue(hero.hexed),
+      muted: booleanValue(hero.muted),
+      disarmed: booleanValue(hero.disarmed),
     },
-    teleportReadiness: { status: 'unknown' as const },
+    teleportReadiness: normalizeTeleportReadiness(items),
   };
 
-  const hasExistingFact = [
+  const hasStatusFact = Object.values(normalized.status).some((fact) => fact !== null);
+  const hasCurrentFact = [
     normalized.heroName,
     normalized.position,
     normalized.alive,
+    normalized.respawnSeconds,
+    normalized.buybackCost,
+    normalized.buybackCooldown,
     normalized.healthPercent,
     normalized.manaPercent,
     normalized.level,
     normalized.xp,
   ].some((fact) => fact !== null);
+  const hasTeleportFact = normalized.teleportReadiness.status !== 'unknown';
 
-  return hasExistingFact ? normalized : null;
+  return hasCurrentFact || hasStatusFact || hasTeleportFact ? normalized : null;
 }
 
 function markerKindValue(image: unknown): HeroMarkerKind {
@@ -204,6 +253,144 @@ function normalizeMinimapHeroes(value: unknown): NormalizedHeroObservation[] {
   return observations;
 }
 
+type CanonicalStructure = Readonly<{
+  buildingId: string;
+  structureId: string;
+  team: Team;
+  kind: NormalizedStructureObservation['kind'];
+  tier: NormalizedStructureObservation['tier'];
+}>;
+
+function structureTeam(side: string): Team {
+  return side === 'goodguys' || side === 'good' ? 'radiant' : 'dire';
+}
+
+function canonicalStructureId(rawId: string): CanonicalStructure | null {
+  const tower = /^(?:npc_)?dota_(goodguys|badguys)_tower([1-4])(?:_(top|mid|bot))?$/.exec(rawId);
+
+  if (tower !== null) {
+    const [, side, rawTier, lane] = tower;
+
+    if (side === undefined || rawTier === undefined) {
+      return null;
+    }
+
+    const team = structureTeam(side);
+    const tier = Number(rawTier) as 1 | 2 | 3 | 4;
+
+    if (tier !== 4 && lane === undefined) {
+      return null;
+    }
+
+    const structureId = tier === 4 ? `${team}:tower:4` : `${team}:tower:${tier}:${lane}`;
+    const buildingId = tier === 4 && lane !== undefined ? `${structureId}:${lane}` : structureId;
+    return { buildingId, structureId, team, kind: 'tower', tier };
+  }
+
+  const markerBarracks = /^(?:npc_dota_)?(goodguys|badguys)_(melee|range)_rax_(top|mid|bot)$/.exec(rawId);
+  const buildingBarracks = /^(good|bad)_rax_(melee|range)_(top|mid|bot)$/.exec(rawId);
+  const barracks = markerBarracks ?? buildingBarracks;
+
+  if (barracks !== null) {
+    const [, side, kind, lane] = barracks;
+
+    if (side === undefined || kind === undefined || lane === undefined) {
+      return null;
+    }
+
+    const team = structureTeam(side);
+    const structureId = `${team}:barracks:${kind}:${lane}`;
+    return { buildingId: structureId, structureId, team, kind: 'barracks', tier: null };
+  }
+
+  const ancient = /^(?:npc_)?dota_(goodguys|badguys)_fort$/.exec(rawId);
+
+  if (ancient !== null) {
+    const side = ancient[1];
+
+    if (side === undefined) {
+      return null;
+    }
+
+    const team = structureTeam(side);
+    const structureId = `${team}:ancient`;
+    return { buildingId: structureId, structureId, team, kind: 'ancient', tier: null };
+  }
+
+  return null;
+}
+
+function comparePositions(left: Position, right: Position): number {
+  return left.x === right.x ? left.y - right.y : left.x - right.x;
+}
+
+function normalizeMinimapStructures(value: unknown): NormalizedStructureObservation[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const structures = new Map<
+    string,
+    Readonly<{
+      canonical: CanonicalStructure;
+      positions: Position[];
+      conflicting: boolean;
+    }>
+  >();
+
+  for (const markerValue of Object.values(value)) {
+    if (!isRecord(markerValue)) {
+      continue;
+    }
+
+    const marker = markerValue as RawGsiMinimapMarker;
+    const rawId = nonEmptyString(marker.unitname);
+    const canonical = rawId === null ? null : canonicalStructureId(rawId);
+    const markerTeam = teamValue(marker.team);
+    const position = positionValue(marker.xpos, marker.ypos);
+
+    if (canonical === null || position === null || (markerTeam !== null && markerTeam !== canonical.team)) {
+      continue;
+    }
+
+    const existing = structures.get(canonical.structureId);
+
+    if (existing === undefined) {
+      structures.set(canonical.structureId, { canonical, positions: [position], conflicting: false });
+      continue;
+    }
+
+    const isDuplicate = existing.positions.some(
+      (existingPosition) => existingPosition.x === position.x && existingPosition.y === position.y
+    );
+
+    if (isDuplicate) {
+      continue;
+    }
+
+    if (canonical.tier !== 4) {
+      structures.set(canonical.structureId, { ...existing, conflicting: true });
+      continue;
+    }
+
+    structures.set(canonical.structureId, {
+      ...existing,
+      positions: [...existing.positions, position],
+    });
+  }
+
+  return [...structures.values()]
+    .filter((structure) => !structure.conflicting)
+    .map(({ canonical, positions }) => ({
+      structureId: canonical.structureId,
+      team: canonical.team,
+      kind: canonical.kind,
+      tier: canonical.tier,
+      positions: positions.sort(comparePositions),
+    }))
+    .sort((left, right) => left.structureId.localeCompare(right.structureId));
+}
+
 function normalizeBuildings(value: unknown): NormalizedBuildingObservation[] {
   if (!isRecord(value)) {
     return [];
@@ -218,15 +405,21 @@ function normalizeBuildings(value: unknown): NormalizedBuildingObservation[] {
       continue;
     }
 
-    for (const [buildingId, buildingValue] of Object.entries(teamBuildings)) {
+    for (const [rawBuildingId, buildingValue] of Object.entries(teamBuildings)) {
       if (!isRecord(buildingValue)) {
+        continue;
+      }
+
+      const canonical = canonicalStructureId(rawBuildingId);
+
+      if (canonical?.team !== team) {
         continue;
       }
 
       const building = buildingValue as RawGsiBuilding;
       observations.push({
-        buildingId,
-        structureId: buildingId,
+        buildingId: canonical.buildingId,
+        structureId: canonical.structureId,
         team,
         health: finiteNumber(building.health),
         maxHealth: finiteNumber(building.max_health),
@@ -340,9 +533,9 @@ export function normalizeGsiSnapshot(value: unknown): NormalizedClientSnapshot {
     sourceTimestampSeconds: provider === null ? null : finiteNumber(provider.timestamp),
     match: normalizeMatch(snapshot.map),
     player: normalizePlayer(snapshot.player),
-    hero: normalizeHero(snapshot.hero),
+    hero: normalizeHero(snapshot.hero, snapshot.items),
     minimapHeroes: normalizeMinimapHeroes(snapshot.minimap),
-    minimapStructures: [],
+    minimapStructures: normalizeMinimapStructures(snapshot.minimap),
     buildings: normalizeBuildings(snapshot.buildings),
     events: normalizeEvents(snapshot.events),
   });

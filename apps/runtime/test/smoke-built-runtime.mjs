@@ -22,6 +22,20 @@ client_credentials:
     discord_user_id: '123456789012345678'
     coach_alias: Smoke Test Player
 `;
+const lostPolicyYaml = `
+schema_version: 1
+map_depth:
+  center_half_width: 1200
+  base_boundary: 7700
+proximity:
+  structure_radius: 1600
+  team_cluster_radius: 1200
+  minimum_cluster_size: 2
+structure_risk:
+  critical_health_percent: 25
+  pressured_health_percent: 60
+  repeated_active_damage_events: 2
+`;
 
 function waitForLog(child, lines, message, timeoutMs = 5_000) {
   return new Promise((resolve, reject) => {
@@ -86,6 +100,7 @@ function spawnRuntime(environment) {
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'dota2-coach-smoke-'));
 const clientConfigPath = join(temporaryDirectory, 'clients.yaml');
 const clientCredentialsPath = join(temporaryDirectory, 'client-credentials.yaml');
+const lostPolicyPath = join(temporaryDirectory, 'lost-policy.yaml');
 let runtimeProcess;
 let invalidRuntimeProcess;
 
@@ -93,6 +108,7 @@ try {
   await Promise.all([
     writeFile(clientConfigPath, clientsYaml, 'utf8'),
     writeFile(clientCredentialsPath, credentialsYaml, 'utf8'),
+    writeFile(lostPolicyPath, lostPolicyYaml, 'utf8'),
   ]);
 
   const portProbe = createServer();
@@ -110,6 +126,7 @@ try {
     ...process.env,
     CLIENT_CONFIG_PATH: clientConfigPath,
     CLIENT_CREDENTIALS_PATH: clientCredentialsPath,
+    LOST_POLICY_PATH: lostPolicyPath,
     HOST: '127.0.0.1',
     LOG_LEVEL: 'info',
     PORT: String(runtimePort),
