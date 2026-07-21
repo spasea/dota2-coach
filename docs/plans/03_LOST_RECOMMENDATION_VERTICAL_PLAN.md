@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Lost Context Enablement RED (not-started)`
+- Current implementation phase: `Phase 1 — Lost Context Enablement RED (in-progress)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -232,8 +232,10 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     text/result data for the future adapter.
 79. An alternative is returned only when another directional candidate passes its blockers and confidence floor.
     `HOLD_AND_WAIT` has no alternative.
-80. Exact numeric weights and thresholds live in a validated public Lost policy document. Russian wording is mapped
-    from stable reason/action codes in `lost` and is not embedded in the numeric policy.
+80. Exact decision numbers live in a validated public Lost policy document. Phase 1–2 introduces only factual-context
+    thresholds; scoring, confidence, and stability numbers are added before the first runtime recommendation consumer
+    exists. Russian wording is mapped from stable reason/action codes in `lost` and is not embedded in the numeric
+    policy.
 
 ### Configuration and GitOps boundary
 
@@ -242,14 +244,19 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 82. Local development tracks `ops/dev/config/runtime/lost-policy.yaml`. Production may mount the equivalent public
     document from the separate GitOps repository.
 83. The application repository does not add Kubernetes, Kustomize, KSOPS, SOPS, Argo CD, or production manifests.
-84. YAML parsing and strict semantic validation are separate. Invalid syntax, schema version, non-finite values,
-    negative radii, unordered boundaries, invalid confidence thresholds, or missing action weights fail startup before
-    port binding through the established configuration-error path.
+84. YAML parsing and strict semantic validation are separate. During Phase 1–2, invalid syntax, schema version,
+    non-finite values, negative radii, non-positive or inverted map-depth dimensions, invalid structure-risk
+    percentages, or an invalid repeated-damage count fail startup before port binding through the established
+    configuration-error path.
+    Phase 3–4 extends it with readiness-signal thresholds; Phase 5–6 extends it atomically with the
+    scoring/confidence/stability fields.
 85. The parsed `LostPolicy` is deeply immutable. Hot reload and in-match policy changes are excluded.
-86. Policy contains only decision numbers and fixed enum mappings: map-depth thresholds, proximity/cluster thresholds,
-    readiness thresholds, structure criticality, pressure/feasibility weights, action bases, confidence floors, and
-    hysteresis window.
-87. The initial advice hysteresis window is `30_000` milliseconds.
+86. Policy contains only decision numbers and fixed enum mappings. Phase 1–2 owns map-depth,
+    proximity/cluster, and non-temporal structure-risk thresholds. Phase 3–4 adds the readiness thresholds consumed
+    by Lost signals. Phase 5–6 extends the same pre-release `schema_version: 1` with pressure/feasibility weights,
+    action bases, confidence floors, and stability values; no temporary neutral weights or unused scoring keys are
+    committed earlier.
+87. The initial advice hysteresis window is `30_000` milliseconds and is added to the policy in Phase 5–6.
 
 ### Advice stability and observability
 
@@ -711,52 +718,141 @@ vertical.
 
 ## Lost Policy Baseline
 
-The YAML field names may improve before Phase 1, but the document remains semantically equivalent to:
+Phase 1–2 introduces only the policy needed to normalize and derive factual Lost context. The YAML field names may
+improve while Phase 1 is active, but the committed context document remains semantically equivalent to:
 
 ```yaml
 schema_version: 1
 
 map_depth:
-  own_base_max: <calibrated number>
-  own_half_max: <calibrated number>
-  center_max: <calibrated number>
-  enemy_half_max: <calibrated number>
+  center_half_width: 1200
+  base_boundary: 7700
 
 proximity:
-  structure_radius: <calibrated positive number>
-  team_cluster_radius: <calibrated positive number>
+  structure_radius: 1600
+  team_cluster_radius: 1200
   minimum_cluster_size: 2
 
-readiness:
-  low_health_percent: <validated percentage>
-  low_mana_percent: <validated percentage>
-
 structure_risk:
-  critical_health_percent: <validated percentage>
-  pressured_health_percent: <validated percentage greater than critical_health_percent>
-  repeated_active_damage_events: <positive integer>
-
-stability:
-  hysteresis_ms: 30000
-  previous_action_bonus: <non-negative number>
-
-confidence:
-  medium_floor: <validated number>
-  high_floor: <validated number greater than medium_floor>
-
-actions:
-  RESET: { base: <number> }
-  DEFEND: { base: <number> }
-  REGROUP: { base: <number> }
-  FARM_SAFELY: { base: <number> }
-
-weights:
-  # fixed reason-code keys with finite numeric values
+  critical_health_percent: 25
+  pressured_health_percent: 60
+  repeated_active_damage_events: 2
 ```
 
-Angle-bracket values are plan placeholders, not valid runtime defaults. Phase 1 resolves evidence-calibrated values
-before writing policy-parser and signal RED specs; Phase 2 commits a complete valid local YAML document. Production
-code never accepts placeholder or missing values.
+These are the first implementation defaults resolved from the Phase 1 evidence below. Phase 2 commits the equivalent
+valid local context YAML document. Production code never accepts placeholder or missing values.
+
+Phase 3 resolves readiness thresholds and Phase 4 adds them when the first Lost signals consume them. Phase 5 then
+resolves action bases, fixed reason-code weights, confidence floors, and stability values from approved scenarios.
+Phase 6 extends the parser and tracked YAML atomically with those sections, including
+`stability.hysteresis_ms: 30000`, before wiring `recommendLostAction`. These are deliberate completions of the same
+pre-release `schema_version: 1`, not compatibility-bearing schema migrations. Phase 1–2 must not invent placeholder
+readiness or scoring sections merely to anticipate those extensions.
+
+### Phase 1 Fixture Evidence and First Defaults
+
+The calibration source is the `2_125`-snapshot `tmp/gsi_valid_turbo_match.json` capture. Every result below came from
+a bounded `jq` projection; the capture was not line-read, copied, or committed. These values are conservative first
+defaults from one Turbo match, not statistical claims about every patch or match. Recalibration may change policy
+values later without changing the domain model.
+
+#### Confirmed factual adapter fields
+
+- The local `hero` object exposes `respawn_seconds`, `buyback_cost`, `buyback_cooldown`, `alive`, `stunned`,
+  `silenced`, `hexed`, `muted`, and `disarmed`. The five explicit disable booleans cross the adapter; aggregate
+  `has_debuff` and unsupported effect semantics do not.
+- `items.teleport0` contained `item_tpscroll` in `2_062` observations. `cooldown` ranged from `0` to `59`, and
+  `item_charges`/`charges` both ranged from `1` to `6` with zero mismatches in the capture.
+- Technical TP readiness therefore requires the confirmed scroll name, zero cooldown, and a positive charge. Hero
+  life/disable state is evaluated separately. `can_cast` is not readiness evidence: it was `true` in `1_778`
+  observations, including `453` dead and `9` stunned observations.
+- Provider building IDs and minimap unit names join directly for T1–T3 and Ancient by adding the `npc_` prefix.
+  Barracks join by mapping `good_rax_<type>_<lane>` to
+  `npc_dota_goodguys_<type>_rax_<lane>`; the equivalent Dire names are covered by mirrored synthetic specs.
+- The minimap exposes two same-name T4 markers per team while the provider exposes top/bottom T4 IDs. Both markers
+  form one spatial defense area; the adapter must not fabricate a top/bottom identity from their order.
+- The capture has local building health only for Radiant, while minimap structure positions exist for both teams.
+  Provider/minimap joins are fixture-backed for Radiant and team symmetry is verified synthetically for Dire.
+
+#### Team-oriented map depth
+
+For position `(x, y)`, raw diagonal depth is `x + y`. Team-oriented depth is `x + y` for Radiant and `-(x + y)`
+for Dire, so negative always points toward the requester's own base and
+`radiantDepth(x, y) == direDepth(-x, -y)`. Two positive policy values make asymmetric configuration impossible.
+Boundary equality is assigned explicitly so opposite positions always map to opposite zones:
+
+```text
+depth < -7700           → own_base
+-7700 <= depth < -1200  → own_half
+-1200 <= depth <= 1200  → river_or_center
+1200 < depth <= 7700    → enemy_half
+depth > 7700            → enemy_base
+```
+
+Static structure anchors from both teams use the same owner-relative direction after that projection, while retaining
+the map's real geometric asymmetry:
+
+| Owner-relative structure | Observed depth range |
+| ------------------------ | -------------------: |
+| Ancient                  |   `-11_272..-10_528` |
+| Barracks                 |    `-10_640..-8_519` |
+| T4                       |    `-10_584..-9_712` |
+| T3                       |    `-10_064..-8_031` |
+| T2                       |     `-7_373..-4_608` |
+| T1                       |       `-4_480..-762` |
+
+`7_700` is the rounded midpoint between the closest-to-center T3 anchor (`-8_031`) and the deepest T2 anchor
+(`-7_373`), leaving roughly equal calibration margin on both sides. The symmetric `±1_200` center band sits at the
+river-facing edge of the observed T1 anchors. The map itself is not an exact central mirror: Radiant T1 depths are
+`-4_480..-1_520`, while Dire T1 depths are `-4_029..-762`; therefore two physical Dire T1 positions fall in
+`river_or_center`. This is intentional physical-depth behavior and does not reclassify zones by tower tier.
+
+As a sanity check, `9_240` unambiguous allied primary-marker observations distribute as `19.88% own_base`,
+`45.49% own_half`, `16.39% river_or_center`, `12.71% enemy_half`, and `5.54% enemy_base`; no zone is rendered
+unreachable by the defaults.
+
+#### Spatial radii
+
+Allied calibration uses only team-2 hero markers with `minimap_herocircle` or `minimap_herocircle_self`. Frames with
+a duplicate marker for the same hero are excluded. Enemy/structure calibration uses consecutive building-health
+decreases and only unambiguous `minimap_enemyicon` hero identities; a nearby enemy remains correlation, never a
+confirmed attacker.
+
+| Projection                                                                  | Evidence                                               |                  Default |
+| --------------------------------------------------------------------------- | ------------------------------------------------------ | -----------------------: |
+| Nearest allied pair in `2_061` eligible frames                              | median `657`; p75 `1_342`                              |   `1_200` cluster radius |
+| Frames containing at least one allied pair within `1_200`                   | `71.76%`; `20.89%` of all pair observations            |                          |
+| Nearest visible unambiguous enemy during `262` structure-damage transitions | median `839`; p75 `1_584`                              | `1_600` structure radius |
+| Damage transitions with such an enemy within `1_600`                        | `193/262` overall; `193/257` when an enemy was visible |                          |
+
+The radii are intentionally separate: `1_200` asks for a compact current allied group, while `1_600` conservatively
+captures the local danger area around a damaged structure. Neither radius is converted into travel time or TTI.
+
+#### Non-temporal StructureRisk thresholds
+
+The capture contains `262` health-decrease observations affecting all `18` local structures. Grouping consecutive
+decreases for the same structure with the existing `6_000 ms` active-window gap yields `53` damage episodes.
+
+| Evidence                                      | Observed value                                       | Default consequence                                  |
+| --------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| Post-damage health percent                    | p25 `24.52%`; median `55%`                           | critical at `<= 25%`, pressured boundary at `<= 60%` |
+| Events at or below the selected health bounds | `66/262` at `25%`; `139/262` at `60%`                | both boundaries exercise real fixture states         |
+| Damage events per active episode              | p25 `3`; median `4`; p75 `7`; p90 `9`                | repeated from `2` events                             |
+| Episodes meeting repetition                   | `45/53` with at least `2`; `41/53` with at least `3` | two is the earliest non-single-hit evidence          |
+
+Health thresholds do not independently claim urgency or time to loss. Phase 3 combines them with structure kind,
+timeline availability, active/recent damage, event counts, and last-damage age to derive `stable`, `pressured`, or
+`critical`.
+
+The Phase 1–2 validation contract is now fixed:
+
+- `schema_version` must be exactly `1`, the document must be an object, and unknown keys are rejected;
+- all numeric values must be finite;
+- `0 < center_half_width < base_boundary`;
+- both radii must be positive and `minimum_cluster_size` must be an integer of at least `2`;
+- health percentages must be within `0..100`, with
+  `critical_health_percent < pressured_health_percent`;
+- `repeated_active_damage_events` must be a positive integer.
 
 ## Proposed File Layout
 
@@ -827,7 +923,7 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 | Milestone                                    | RED phase | GREEN phase | Status        |
 | -------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                        | —         | Phase 0     | `completed`   |
-| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `not-started` |
+| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `in-progress` |
 | M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `not-started` |
 | M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
@@ -894,7 +990,7 @@ Exit criteria:
 
 ## Phase 1 — Lost Context Enablement RED
 
-Status: `not-started`
+Status: `in-progress`
 
 Target end state: `red-expected`
 
@@ -905,7 +1001,7 @@ Resolve before writing RED specs:
 - canonical structure-ID normalization between provider and minimap names;
 - evidence-calibrated map-depth, structure-proximity, and cluster-radius defaults;
 - evidence-calibrated non-temporal `StructureRisk` thresholds;
-- complete schema-version-1 Lost policy keys and validation relationships;
+- complete Phase 1–2 context-policy keys and validation relationships;
 - exact factual `StructureRisk` inputs without time-to-loss or arrival-time estimates.
 
 Evidence discipline:
@@ -956,9 +1052,10 @@ Implement:
 - current structure-marker normalization and canonical identity;
 - factual repeated/last-age building-pressure extension;
 - coaching-context projection of the new current facts;
-- strict versioned Lost policy parser and immutable domain policy;
+- strict versioned Lost context-policy parser and immutable domain policy;
 - required `LOST_POLICY_PATH` setting, startup source loading, and local Compose value;
-- complete tracked `ops/dev/config/runtime/lost-policy.yaml` with calibrated defaults.
+- complete tracked `ops/dev/config/runtime/lost-policy.yaml` with calibrated context defaults and no unused scoring
+  sections.
 
 Verification:
 
@@ -982,6 +1079,11 @@ Exit criteria:
 Status: `not-started`
 
 Target end state: `red-expected`
+
+Resolve before writing those specs:
+
+- exact policy-backed low-health and supporting low-mana readiness thresholds;
+- validation boundaries for the readiness-policy section added in Phase 4.
 
 Add compile-safe pure seams and failing specs for:
 
@@ -1028,6 +1130,7 @@ Target end state: `green`
 
 Implement pure domain behavior for:
 
+- the strict readiness-policy extension in the same pre-release `schema_version: 1` and its tracked YAML source;
 - map-depth and distance projections;
 - current structure/enemy/ally association without attacker claims;
 - requester readiness;
@@ -1063,6 +1166,9 @@ Target end state: `red-expected`
 
 Resolve before writing RED specs:
 
+- exact action bases, reason-code weights, confidence floors, and stability values that extend the same pre-release
+  `schema_version: 1`;
+- strict validation relationships for the new scoring/confidence/stability sections;
 - safer-action deterministic precedence for exact score ties;
 - exact policy reason-code keys and contribution signs;
 - confidence calculation and exact medium/high boundaries;
@@ -1105,6 +1211,8 @@ Target end state: `green`
 
 Implement:
 
+- atomically extend the Lost policy parser and tracked YAML with the approved Phase 5
+  scoring/confidence/stability sections;
 - pure policy-driven scoring and safe deterministic tie-breaking;
 - confidence classification and alternative selection;
 - stable reason, penalty, blocker, unknown, and guardrail breakdowns;
