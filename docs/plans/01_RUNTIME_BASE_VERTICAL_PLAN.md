@@ -2,9 +2,9 @@
 
 ## Status
 
-- Plan status: `approved`
+- Plan status: `completed`
 - Issue: not assigned
-- Current implementation phase: `Phase 6 — Runtime and Container Integration (in progress)`
+- Current implementation phase: `Phase 7 — Verification and Handoff (completed)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -456,14 +456,14 @@ created as empty placeholders in this slice. Do not add a generic `recommendatio
 
 ## Milestone Status
 
-| Milestone                    | RED phase | GREEN phase | Status        |
-| ---------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline        | —         | Phase 0     | `completed`   |
-| M1. ESM toolchain            | —         | Phase 1     | `completed`   |
-| M2. Configuration and auth   | Phase 2   | Phase 3     | `completed`   |
-| M3. HTTP ingest vertical     | Phase 4   | Phase 5     | `completed`   |
-| M4. Container runtime        | —         | Phase 6     | `in-progress` |
-| M5. Verification and handoff | —         | Phase 7     | `not-started` |
+| Milestone                    | RED phase | GREEN phase | Status      |
+| ---------------------------- | --------- | ----------- | ----------- |
+| M0. Contract baseline        | —         | Phase 0     | `completed` |
+| M1. ESM toolchain            | —         | Phase 1     | `completed` |
+| M2. Configuration and auth   | Phase 2   | Phase 3     | `completed` |
+| M3. HTTP ingest vertical     | Phase 4   | Phase 5     | `completed` |
+| M4. Container runtime        | —         | Phase 6     | `completed` |
+| M5. Verification and handoff | —         | Phase 7     | `completed` |
 
 ## Phase 0 — Contract Baseline
 
@@ -736,7 +736,7 @@ Exit criteria:
 
 ## Phase 6 — Runtime and Container Integration
 
-Status: `in-progress`
+Status: `completed`
 
 Target end state: `green`
 
@@ -754,8 +754,8 @@ Implemented:
 - Split the Dockerfile into dependency, development, build, and non-root runtime targets. Wired local Compose to the
   development target, source and dependency volumes, public/private read-only YAML mounts, port publishing, and health.
 - Verified the Compose document parses, and `npm run check` passes with 9 suites and 56 Jest assertions plus the built
-  process smoke. Docker build and Compose health verification remain pending because Docker is unavailable in the
-  implementation environment.
+  process smoke. Docker image build, Compose startup, container health, authenticated ingest, and bind-mount code reload
+  were subsequently verified in the developer's local Docker environment.
 
 Implement:
 
@@ -789,7 +789,19 @@ Exit criteria:
 
 ## Phase 7 — Verification and Handoff
 
-Status: `not-started`
+Status: `completed`
+
+Completed:
+
+- Verified clean dependency installation from the committed lock file, type checking, the complete Jest suite, ESLint,
+  Prettier, the TypeScript ESM build, the built-runtime smoke, and `git diff --check`.
+- Verified the development Docker image builds and the Compose runtime reaches healthy state with the approved public
+  and private local configuration mounts.
+- Verified authenticated GSI ingest through the running container and automatic `tsx` restart for source changes on the
+  bind mount.
+- Confirmed no focused or intentional RED specs, production stubs, credential/raw-snapshot leaks, boundary violations,
+  speculative shared ownership buckets, or deferred-scope implementations remain in the base vertical.
+- Confirmed all Phase 6 and Phase 7 exit criteria are met and no external verification remains pending.
 
 Run:
 
