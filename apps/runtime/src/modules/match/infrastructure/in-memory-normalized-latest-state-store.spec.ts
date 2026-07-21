@@ -40,6 +40,7 @@ describe('in-memory normalized latest client state', () => {
 
     expect(store.getLatest('client-01')).toEqual(firstClientLatest);
     expect(store.getLatest('client-02')).toEqual(secondClient);
+    expect(store.getAll()).toEqual([firstClientLatest, secondClient]);
   });
 
   it('owns an immutable copy instead of caller state', () => {
@@ -55,5 +56,19 @@ describe('in-memory normalized latest client state', () => {
     expect(Object.isFrozen(storedState)).toBe(true);
     expect(Object.isFrozen(storedState?.snapshot)).toBe(true);
     expect(Object.isFrozen(storedState?.snapshot.events)).toBe(true);
+  });
+
+  it('returns a deterministic immutable client collection', () => {
+    const store = createInMemoryNormalizedLatestStateStore();
+    const secondClient = createState('client-02', 'discord-user-02', 1_500);
+    const firstClient = createState('client-01', 'discord-user-01', 1_000);
+
+    store.save(secondClient);
+    store.save(firstClient);
+
+    const allStates = store.getAll();
+
+    expect(allStates).toEqual([firstClient, secondClient]);
+    expect(Object.isFrozen(allStates)).toBe(true);
   });
 });

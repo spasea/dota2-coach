@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 3 — Match Lifecycle and Timeline RED (not-started)`
+- Current implementation phase: `Phase 4 — Match Lifecycle and Timeline GREEN (not-started)`
 - Last updated: `2026-07-21`
 
 Status values:
@@ -744,9 +744,37 @@ Exit criteria:
 
 ## Phase 3 — Match Lifecycle and Timeline RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
+
+Resolved before starting:
+
+- Equal receive times select the lexicographically smaller stable `clientId`.
+- One incomplete source snapshot preserves the active session, does not refresh source continuity, and does not create
+  a delta. The next usable source snapshot continues the timeline only while the previous usable source snapshot is
+  still fresh; otherwise it establishes a new baseline.
+
+Completed:
+
+- Added immutable `MatchSession`, timeline status/update, and transition-decision contracts without introducing
+  `MatchMemory` or coaching-context output.
+- Added compile-safe pure seams for session advancement, query-time timeline freshness, and active-group selection.
+  Their intentional unchanged/empty behavior leaves the approved lifecycle and selection expectations RED for Phase 4.
+- Added the application-owned active-session store port without an implementation or runtime wiring.
+- Extended the normalized latest-state boundary with deterministic immutable `getAll()` enumeration so Phase 4 can
+  select a current group without duplicating client state.
+- Added intent-driven lifecycle specs for absent/initial sessions, sticky source ownership, foreign isolation,
+  source-only rollover/reset, incomplete and post-game source snapshots, timeline health, exact staleness, return
+  baselines, gap suppression, and no automatic failover.
+- Added active-group specs for same-match/same-team freshness, exact boundary exclusion, coverage and its cap,
+  freshest selection, the approved `clientId` tie-break, negative fake-clock age, and one-snapshot minimap selection.
+- Kept the new seams unwired from `recordClientSnapshot`; no reducer, context, timer, log, or public HTTP behavior was
+  added prematurely.
+- Verified the prior and enabling coverage remains green: 10 suites and 65 tests pass when the two intentional RED
+  domain suites are excluded.
+- Verified the targeted RED result: 13 assertions fail only on the missing lifecycle/timeline/group behavior while 2
+  invariant scenarios already pass. Type checking, ESLint, Prettier, ESM build, and built-runtime smoke are green.
 
 Add compile-safe seams and failing specs for:
 
@@ -776,7 +804,7 @@ Target end state: `green`
 
 Implement:
 
-- the single active-session state and store port;
+- the single active-session in-memory store implementation and runtime wiring behind the approved port;
 - pure session create/participate/end/rollover decisions;
 - sticky source and timeline transition reducer;
 - source continuity baseline representation;

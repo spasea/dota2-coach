@@ -17,6 +17,16 @@ export function createInMemoryNormalizedLatestStateStore(): NormalizedLatestStat
   const latestStateByClientId = new Map<string, NormalizedClientState>();
 
   return Object.freeze({
+    getAll: () =>
+      Object.freeze(
+        [...latestStateByClientId.values()].sort((left, right) => {
+          if (left.identity.clientId === right.identity.clientId) {
+            return 0;
+          }
+
+          return left.identity.clientId < right.identity.clientId ? -1 : 1;
+        })
+      ),
     getLatest: (clientId: string) => latestStateByClientId.get(clientId) ?? null,
     save: (state: NormalizedClientState) => {
       const ownedState = structuredClone(state);

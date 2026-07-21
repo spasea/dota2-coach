@@ -9,6 +9,7 @@ describe('record client snapshot', () => {
   it('records resolved identity, server receive time, and accepted snapshot', () => {
     const save = jest.fn<(state: NormalizedClientState) => void>();
     const latestStateStore: NormalizedLatestStateStore = {
+      getAll: () => [],
       getLatest: () => null,
       save,
     };
