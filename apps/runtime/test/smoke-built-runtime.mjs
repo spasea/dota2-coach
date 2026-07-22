@@ -38,6 +38,44 @@ structure_risk:
 readiness:
   low_health_percent: 25
   low_mana_percent: 20
+scoring:
+  action_bases:
+    RESET: 0
+    DEFEND: 0
+    REGROUP: 0
+    FARM_SAFELY: 20
+  contributions:
+    RESET:
+      requester_low_health: 70
+      requester_low_mana: 15
+      requester_disabled: 45
+    DEFEND:
+      active_structure_damage: 40
+      recent_structure_damage: 20
+      repeated_structure_damage: 15
+      critical_structure: 25
+      requester_already_near_structure: 15
+      requester_can_teleport: 10
+      allied_defenders_already_present: 15
+      requester_would_arrive_outnumbered: -55
+      partial_evidence: -10
+    REGROUP:
+      requester_deep_and_isolated: 35
+      enemies_missing: 15
+      confirmed_allied_cluster: 30
+      partial_evidence: -10
+    FARM_SAFELY:
+      requester_would_arrive_outnumbered: 35
+      requester_deep_and_isolated: 25
+      enemies_missing: 20
+      enemies_visible_elsewhere: 25
+confidence:
+  medium_score_floor: 20
+  high_score_floor: 65
+  alternative_score_gap: 15
+stability:
+  hysteresis_ms: 30000
+  previous_action_bonus: 5
 `;
 
 function waitForLog(child, lines, message, timeoutMs = 5_000) {

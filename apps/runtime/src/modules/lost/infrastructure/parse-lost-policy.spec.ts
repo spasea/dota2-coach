@@ -3,7 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { ConfigurationError } from '../../../platform/config/configuration-error.js';
 import { parseLostPolicy } from './parse-lost-policy.js';
 
-const validPolicyYaml = `
+const signalPolicyYaml = `
 schema_version: 1
 map_depth:
   center_half_width: 1200
@@ -21,7 +21,7 @@ readiness:
   low_mana_percent: 20
 `;
 
-const decisionPolicyYaml = `${validPolicyYaml}
+const validPolicyYaml = `${signalPolicyYaml}
 scoring:
   action_bases:
     RESET: 0
@@ -63,10 +63,10 @@ stability:
 `;
 
 describe('Lost policy parsing', () => {
-  it('parses the complete signal-policy schema into a deeply immutable domain policy', () => {
+  it('parses the complete policy schema into a deeply immutable domain policy', () => {
     const policy = parseLostPolicy(validPolicyYaml);
 
-    expect(policy).toEqual({
+    expect(policy).toMatchObject({
       schemaVersion: 1,
       mapDepth: {
         centerHalfWidth: 1_200,
@@ -144,7 +144,10 @@ describe('Lost policy parsing', () => {
     ['100% health threshold', validPolicyYaml.replace('low_health_percent: 25', 'low_health_percent: 100')],
     ['zero mana threshold', validPolicyYaml.replace('low_mana_percent: 20', 'low_mana_percent: 0')],
     ['100% mana threshold', validPolicyYaml.replace('low_mana_percent: 20', 'low_mana_percent: 100')],
-    ['unknown readiness key', `${validPolicyYaml}  secret_weight: 1\n`],
+    [
+      'unknown readiness key',
+      validPolicyYaml.replace('low_mana_percent: 20', 'low_mana_percent: 20\n  secret_weight: 1'),
+    ],
   ])('rejects %s for the signal-policy contract', (_caseName, yaml) => {
     expect(() => parseLostPolicy(yaml)).toThrow(
       expect.objectContaining({ source: 'lost_policy', stage: 'validation' })
@@ -154,7 +157,7 @@ describe('Lost policy parsing', () => {
 
 describe('Lost decision-policy extension', () => {
   it('parses the exact scoring, confidence, and stability contract as deeply immutable values', () => {
-    const policy = parseLostPolicy(decisionPolicyYaml);
+    const policy = parseLostPolicy(validPolicyYaml);
 
     expect(policy).toMatchObject({
       scoring: {
@@ -196,18 +199,24 @@ describe('Lost decision-policy extension', () => {
   });
 
   it.each([
-    ['missing scoring', decisionPolicyYaml.replace(/scoring:[\s\S]*?confidence:/, 'confidence:')],
-    ['unknown action', decisionPolicyYaml.replace('FARM_SAFELY: 20', 'ESCAPE: 20')],
-    ['unknown reason', decisionPolicyYaml.replace('requester_low_health: 70', 'fabricated_reason: 70')],
-    ['zero contribution', decisionPolicyYaml.replace('requester_low_health: 70', 'requester_low_health: 0')],
+    ['missing scoring', validPolicyYaml.replace(/scoring:[\s\S]*?confidence:/, 'confidence:')],
+    ['missing confidence', validPolicyYaml.replace(/confidence:[\s\S]*?stability:/, 'stability:')],
+    ['missing stability', validPolicyYaml.replace(/stability:[\s\S]*$/, '')],
+    ['unknown action', validPolicyYaml.replace('FARM_SAFELY: 20', 'ESCAPE: 20')],
+    ['unknown reason', validPolicyYaml.replace('requester_low_health: 70', 'fabricated_reason: 70')],
+    ['zero contribution', validPolicyYaml.replace('requester_low_health: 70', 'requester_low_health: 0')],
+    ['fractional action base', validPolicyYaml.replace('FARM_SAFELY: 20', 'FARM_SAFELY: 20.5')],
+    ['fractional contribution', validPolicyYaml.replace('requester_low_health: 70', 'requester_low_health: 70.5')],
     [
       'wrong contribution sign',
-      decisionPolicyYaml.replace('requester_would_arrive_outnumbered: -55', 'requester_would_arrive_outnumbered: 55'),
+      validPolicyYaml.replace('requester_would_arrive_outnumbered: -55', 'requester_would_arrive_outnumbered: 55'),
     ],
-    ['unordered confidence floors', decisionPolicyYaml.replace('high_score_floor: 65', 'high_score_floor: 20')],
-    ['negative alternative gap', decisionPolicyYaml.replace('alternative_score_gap: 15', 'alternative_score_gap: -1')],
-    ['non-positive hysteresis', decisionPolicyYaml.replace('hysteresis_ms: 30000', 'hysteresis_ms: 0')],
-    ['bonus not smaller than gap', decisionPolicyYaml.replace('previous_action_bonus: 5', 'previous_action_bonus: 15')],
+    ['unordered confidence floors', validPolicyYaml.replace('high_score_floor: 65', 'high_score_floor: 20')],
+    ['fractional confidence floor', validPolicyYaml.replace('medium_score_floor: 20', 'medium_score_floor: 20.5')],
+    ['negative alternative gap', validPolicyYaml.replace('alternative_score_gap: 15', 'alternative_score_gap: -1')],
+    ['non-positive hysteresis', validPolicyYaml.replace('hysteresis_ms: 30000', 'hysteresis_ms: 0')],
+    ['fractional stability bonus', validPolicyYaml.replace('previous_action_bonus: 5', 'previous_action_bonus: 5.5')],
+    ['bonus not smaller than gap', validPolicyYaml.replace('previous_action_bonus: 5', 'previous_action_bonus: 15')],
   ])('rejects %s', (_caseName, yaml) => {
     expect(() => parseLostPolicy(yaml)).toThrow(
       expect.objectContaining({ source: 'lost_policy', stage: 'validation' })

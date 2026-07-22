@@ -295,7 +295,8 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 88. Lost advice memory is in-memory, requester-scoped, and bounded to one latest entry per trusted client.
 89. Advice memory stores only client ID, match/team identity, selected action, score, a stable Lost context key, and
     monotonic creation time. It does not retain `CoachContext`, raw snapshots, positions, rendered text, Discord ID, or
-    alias.
+    alias. `HOLD_AND_WAIT` replaces the previous entry with score `0`, so a pre-hold directional action cannot regain
+    a stale hysteresis bonus after death or pause.
 90. An entry from another match/team is ignored and replaced on the next recommendation. The store does not require a
     callback from `match` during rollover.
 91. Within `30_000` milliseconds, the previous eligible action receives only a small stability contribution when its
@@ -306,7 +307,8 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
     belong to the future Discord adapter.
 94. Tests inject monotonic time and never sleep.
 95. Safe decision logs may include request correlation supplied by a future adapter, client ID, match ID, action,
-    confidence, coverage, score, and stable reason/unknown codes.
+    confidence, coverage, score, stable reason/unknown codes, and a stable `holdReason`. Unavailable context is not a
+    decision and emits no decision metadata.
 96. Logs must not include Discord user ID, alias, raw snapshots, raw event payloads, positions, inventories, auth
     tokens, full rendered advice, or chat.
 
@@ -1075,13 +1077,13 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 
 ## Milestone Status
 
-| Milestone                                    | RED phase | GREEN phase | Status         |
-| -------------------------------------------- | --------- | ----------- | -------------- |
-| M0. Contract baseline                        | —         | Phase 0     | `completed`    |
-| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`    |
-| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed`    |
-| M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `red-expected` |
-| M4. Verification and handoff                 | —         | Phase 7     | `not-started`  |
+| Milestone                                    | RED phase | GREEN phase | Status        |
+| -------------------------------------------- | --------- | ----------- | ------------- |
+| M0. Contract baseline                        | —         | Phase 0     | `completed`   |
+| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`   |
+| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed`   |
+| M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `completed`   |
+| M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
 
 ## Phase 0 — Contract Baseline
 
@@ -1544,36 +1546,47 @@ Exit criteria:
 
 ## Phase 6 — Scoring, Rendering, and Stability GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
 
-Implement:
+Completed:
 
-- atomically extend the Lost policy parser and tracked YAML with the approved Phase 5
-  scoring/confidence/stability sections;
-- pure policy-driven scoring and safe deterministic tie-breaking;
-- confidence classification and alternative selection;
-- stable reason, penalty, blocker, unknown, and guardrail breakdowns;
-- deterministic presentation builder and locale-aware renderer;
-- `COACH_LOCALE` translator selection at the composition root;
-- bounded requester advice store;
-- compatibility-aware hysteresis with urgent bypass;
-- `recommendLostAction` application use case;
-- `modules/lost/public.ts`;
-- runtime composition and internal `Runtime.recommendLostAction` exposure;
-- safe bounded decision logging callback.
+- Atomically extended the canonical `LostPolicy`, strict parser, and tracked local YAML with the approved scoring,
+  confidence, and stability sections. Numeric signs and integer constraints, ordered confidence floors, positive
+  hysteresis, and `previousActionBonus < alternativeScoreGap` are validated before server binding.
+- Replaced the split signal/decision dependency with one canonical policy while retaining narrow `LostSignalPolicy`
+  and decision-section inputs at pure domain boundaries.
+- Implemented blocker-first policy-driven scoring with four local action-specific scorers, typed
+  `reason code → factual value` terms, signed reason/penalty breakdowns, deterministic ordering, and deep immutable
+  outputs.
+- Implemented action-specific confidence, safer exact-tie precedence, inclusive alternative selection, and
+  `HOLD_AND_WAIT` when no directional candidate reaches medium confidence.
+- Implemented versioned categorical context keys without exact HP, coordinates, or damage age, plus immutable
+  match/team/context-aware hysteresis over the half-open `0 <= age < 30_000` window and urgent critical-defense
+  bypass.
+- Implemented the bounded in-memory requester advice store with one owned immutable latest entry per client.
+- Implemented exhaustive typed presentation mapping, strongest-two voice reasons, complete text breakdowns, injected
+  locale translation, and renderer composition without domain rescoring or embedded application copy.
+- Implemented requester-scoped orchestration from `BuildCoachContext` through signals, safety, scoring, stability,
+  confidence, selection, presentation, rendering, memory, and bounded decision metadata.
+- `HOLD_AND_WAIT` now replaces prior advice memory with `score: 0` and is logged with stable `holdReason` and empty
+  `reasonCodes`; unavailable context creates neither memory nor decision metadata.
+- Added the public Lost capability facade and internal `Runtime.recommendLostAction`; bootstrap retains the parsed
+  policy, selects the translator through `COACH_LOCALE`, and emits safe structured decision logs.
+- Kept the existing health/GSI routes and transport behavior unchanged; no Lost HTTP route, Discord adapter, TTS,
+  timer, worker, or proactive delivery was introduced.
 
-Verification:
+Verification evidence (`2026-07-21`):
 
-- Phase 5 specs pass;
-- repeated identical contexts remain stable within the window;
-- exact hysteresis boundary and fake-clock negative-age guards are deterministic;
-- death, pause, unsafe defense, and critical newly feasible defense replace stale advice immediately;
-- every recommendation remains requester-scoped;
-- no remote teammate action or outcome is inferred;
-- renderer contains only supported factual claims;
-- runtime starts only with valid Lost policy and still exposes no Lost route.
+- `npm run check` — passed, including typecheck, ESLint, Prettier, all `34` Jest suites / `296` tests, ESM build, and
+  built-runtime smoke;
+- all former Phase 5 RED seams are GREEN; no `not implemented` production stub remains in the Lost vertical;
+- policy/parser, scoring, confidence, selection, context-key, hysteresis, store, presentation, locale, renderer,
+  orchestration, HOLD memory/logging, and runtime facade intent cases pass;
+- refreshed code graph reports no Lost domain import into application/infrastructure and no deep Lost import into the
+  Match module;
+- runtime startup retains strict Lost policy and locale validation and exposes no new route.
 
 Exit criteria:
 

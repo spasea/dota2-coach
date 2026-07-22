@@ -41,6 +41,8 @@ describe('Lost recommendation rendering', () => {
       voiceGuardrails: [],
       unknowns: [lostMessage('lost.unknown.partial_team_coverage', undefined)],
       guardrails: [],
+      unknownCodes: ['partial_team_coverage'],
+      guardrailCodes: [],
     };
     const translatedMessages: LostMessage[] = [];
 
@@ -77,6 +79,8 @@ describe('Lost recommendation rendering', () => {
         voiceGuardrails: [],
         unknowns: [],
         guardrails: [],
+        unknownCodes: [],
+        guardrailCodes: [],
       },
       translator: createKeyTranslator([]),
     });
@@ -95,6 +99,8 @@ function createKeyTranslator(translatedMessages: LostMessage[]): LostTranslator 
   return (message) => {
     translatedMessages.push(message);
 
-    return `[${message.key}]`;
+    const params = message.params === undefined ? '' : JSON.stringify(message.params);
+
+    return `[${message.key}]${params}`;
   };
 }

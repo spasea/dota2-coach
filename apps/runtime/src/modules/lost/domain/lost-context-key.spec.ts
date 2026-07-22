@@ -67,6 +67,45 @@ describe('Lost categorical context key', () => {
     expect(key).not.toContain('-6379');
     expect(key).not.toContain('500');
   });
+
+  it('is independent of structure and defense collection order', () => {
+    const baseline = pressuredSignals();
+    const additional = createDecisionSignals({
+      ...baseline,
+      structureRisks: [
+        ...baseline.structureRisks,
+        {
+          buildingId: 'radiant:tower:3:mid',
+          structureId: 'radiant:tower:3:mid',
+          level: 'pressured',
+          damageActivity: 'recent',
+          activeDamageEvents: 0,
+          recentDamageEvents: 1,
+          lastDamageAgeMs: 8_000,
+        },
+      ],
+      defenses: [
+        ...baseline.defenses,
+        {
+          buildingId: 'radiant:tower:3:mid',
+          structureId: 'radiant:tower:3:mid',
+          arrivalClass: 'already_near',
+          readyDefenders: 2,
+          uncertainSupports: 0,
+          visibleEnemyLowerBound: 1,
+          numericalRisk: 'acceptable',
+          response: 'allowed',
+        },
+      ],
+    });
+    const reversed = createDecisionSignals({
+      ...additional,
+      structureRisks: [...additional.structureRisks].reverse(),
+      defenses: [...additional.defenses].reverse(),
+    });
+
+    expect(deriveLostContextKey(reversed)).toBe(deriveLostContextKey(additional));
+  });
 });
 
 function pressuredSignals() {

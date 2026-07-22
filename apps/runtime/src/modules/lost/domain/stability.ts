@@ -14,6 +14,34 @@ export type ApplyLostStabilityInput = Readonly<{
 }>;
 
 export function applyLostStability(input: ApplyLostStabilityInput): readonly RankedLostCandidate[] {
-  void input;
-  throw new Error('Lost advice stability is not implemented.');
+  if (!canApplyPreviousAdvice(input)) {
+    return input.candidates;
+  }
+
+  const stableCandidates = input.candidates.map((candidate) =>
+    candidate.action === input.previous?.action
+      ? Object.freeze({ ...candidate, score: candidate.score + input.policy.previousActionBonus })
+      : candidate
+  );
+
+  return Object.freeze(stableCandidates);
+}
+
+function canApplyPreviousAdvice(input: ApplyLostStabilityInput): boolean {
+  const previous = input.previous;
+
+  if (previous === null || input.bypass) {
+    return false;
+  }
+  if (previous.matchId !== input.matchId || previous.team !== input.team || previous.contextKey !== input.contextKey) {
+    return false;
+  }
+
+  const age = input.now - previous.createdAt;
+
+  if (age < 0 || age >= input.policy.hysteresisMs) {
+    return false;
+  }
+
+  return input.candidates.some((candidate) => candidate.action === previous.action);
 }

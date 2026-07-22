@@ -7,7 +7,7 @@ import type {
   Position,
   TeleportReadiness,
 } from '../../match/public.js';
-import type { LostPolicy } from './lost-policy.js';
+import type { LostSignalPolicy } from './lost-policy.js';
 import { projectMapDepth, type MapDepthProjection } from './map-depth.js';
 
 export type ReadinessThresholdState = 'low' | 'not_low' | 'unknown';
@@ -76,7 +76,7 @@ export type LostSignals = Readonly<{
 
 export type DeriveLostSignalsInput = Readonly<{
   context: CoachContext;
-  policy: LostPolicy;
+  policy: LostSignalPolicy;
 }>;
 
 export function deriveLostSignals(input: DeriveLostSignalsInput): LostSignals {
@@ -139,7 +139,7 @@ type BuildingEvidence = Readonly<{
 
 type StructureIndex = ReadonlyMap<string, NormalizedStructureObservation>;
 
-function deriveRequesterReadiness(context: CoachContext, policy: LostPolicy): RequesterReadinessSignal {
+function deriveRequesterReadiness(context: CoachContext, policy: LostSignalPolicy): RequesterReadinessSignal {
   const hero = context.requester.snapshot.hero;
 
   return Object.freeze({
@@ -260,7 +260,7 @@ function indexOwnStructures(context: CoachContext): StructureIndex {
 
 function deriveStructureRisks(
   context: CoachContext,
-  policy: LostPolicy,
+  policy: LostSignalPolicy,
   structuresById: StructureIndex
 ): readonly StructureRiskSignal[] {
   const evidence = collectBuildingEvidence(context);
@@ -274,7 +274,7 @@ function deriveStructureRisks(
 function deriveStructureRisk(
   building: BuildingEvidence,
   structure: NormalizedStructureObservation | undefined,
-  policy: LostPolicy
+  policy: LostSignalPolicy
 ): StructureRiskSignal {
   const damageActivity = deriveDamageActivity(building);
 
@@ -293,7 +293,7 @@ function classifyStructureRisk(
   building: BuildingEvidence,
   structure: NormalizedStructureObservation | undefined,
   damageActivity: StructureDamageActivity,
-  policy: LostPolicy
+  policy: LostSignalPolicy
 ): StructureRiskLevel {
   const healthPercent = (building.currentHealth / building.maxHealth) * 100;
   const receivesCriticalActiveDamage =
@@ -406,7 +406,7 @@ function isHighGroundStructure(structureId: string, structure: NormalizedStructu
 
 type DeriveDefensesInput = Readonly<{
   context: CoachContext;
-  policy: LostPolicy;
+  policy: LostSignalPolicy;
   structuresById: StructureIndex;
   requesterReadiness: RequesterReadinessSignal;
   structureRisks: readonly StructureRiskSignal[];
@@ -585,7 +585,7 @@ function countNearStructure(
 
 function selectTeamCluster(
   context: CoachContext,
-  policy: LostPolicy,
+  policy: LostSignalPolicy,
   allies: readonly AlliedObservation[],
   enemies: readonly VisibleEnemy[]
 ): TeamClusterSignal | null {
@@ -620,7 +620,7 @@ function selectTeamCluster(
 
 function deriveTeamClusterCandidate(
   context: CoachContext,
-  policy: LostPolicy,
+  policy: LostSignalPolicy,
   members: readonly AlliedObservation[],
   enemies: readonly VisibleEnemy[]
 ): TeamClusterSignal | null {
@@ -698,7 +698,7 @@ function compareTeamClusters(left: TeamClusterSignal, right: TeamClusterSignal):
 
 function deriveIsolation(
   context: CoachContext,
-  policy: LostPolicy,
+  policy: LostSignalPolicy,
   mapDepth: MapDepthProjection,
   allies: readonly AlliedObservation[],
   enemies: readonly VisibleEnemy[]

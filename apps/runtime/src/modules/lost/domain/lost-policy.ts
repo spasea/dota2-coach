@@ -76,10 +76,16 @@ export type LostDecisionPolicy = Readonly<{
   stability: LostStabilityPolicy;
 }>;
 
-export type LostPolicy = Readonly<{
-  schemaVersion: 1;
+export type LostSignalPolicy = Readonly<{
   mapDepth: LostMapDepthPolicy;
   proximity: LostProximityPolicy;
   structureRisk: LostStructureRiskPolicy;
   readiness: LostReadinessPolicy;
 }>;
+
+export type LostPolicy = Readonly<
+  {
+    schemaVersion: 1;
+  } & LostSignalPolicy &
+    LostDecisionPolicy
+>;

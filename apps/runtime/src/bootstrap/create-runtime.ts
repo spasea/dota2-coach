@@ -4,7 +4,11 @@ import { createServer } from 'node:http';
 
 import type { Logger } from 'pino';
 
-import { parseLostPolicy } from '../modules/lost/public.js';
+import {
+  createLostRecommendationCapability,
+  parseLostPolicy,
+  type RecommendLostAction,
+} from '../modules/lost/public.js';
 import {
   createBuildCoachContext,
   createInMemoryActiveMatchStore,
@@ -39,6 +43,7 @@ export type RuntimeAddress = Readonly<{
 
 export type Runtime = Readonly<{
   buildCoachContext: BuildCoachContext;
+  recommendLostAction: RecommendLostAction;
   setRequesterRoleOverride: SetRequesterRoleOverride;
   start: () => Promise<RuntimeAddress>;
   stop: () => Promise<void>;
@@ -80,7 +85,7 @@ export async function createRuntime(
     throw new ConfigurationError({ source: 'lost_policy', stage: 'source' });
   }
 
-  parseLostPolicy(lostPolicyYaml);
+  const lostPolicy = parseLostPolicy(lostPolicyYaml);
 
   const latestStateStore = createInMemoryNormalizedLatestStateStore();
   const activeMatchStore = createInMemoryActiveMatchStore();
@@ -109,6 +114,15 @@ export async function createRuntime(
     latestStateStore,
     monotonicNow: dependencies.monotonicNow,
   });
+  const recommendLostAction = createLostRecommendationCapability({
+    buildCoachContext,
+    locale: settings.coachLocale,
+    monotonicNow: dependencies.monotonicNow,
+    policy: lostPolicy,
+    recordDecision: (metadata) => {
+      logger.info(metadata, 'lost recommendation decided');
+    },
+  });
   const app = createApp({
     gsiBodyLimitBytes: GSI_BODY_LIMIT_BYTES,
     logger,
@@ -120,6 +134,7 @@ export async function createRuntime(
 
   return Object.freeze({
     buildCoachContext,
+    recommendLostAction,
     setRequesterRoleOverride,
     start: async () => {
       await new Promise<void>((resolve, reject) => {

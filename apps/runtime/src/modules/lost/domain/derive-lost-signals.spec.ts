@@ -8,10 +8,9 @@ import type {
 } from '../../match/public.js';
 import { deriveLostSignals } from './derive-lost-signals.js';
 import { createLostContext } from './lost-domain.spec-fixtures.js';
-import type { LostPolicy } from './lost-policy.js';
+import type { LostSignalPolicy } from './lost-policy.js';
 
-const policy: LostPolicy = Object.freeze({
-  schemaVersion: 1,
+const policy: LostSignalPolicy = Object.freeze({
   mapDepth: Object.freeze({ centerHalfWidth: 1_200, baseBoundary: 7_700 }),
   proximity: Object.freeze({ structureRadius: 1_600, teamClusterRadius: 1_200, minimumClusterSize: 2 }),
   structureRisk: Object.freeze({

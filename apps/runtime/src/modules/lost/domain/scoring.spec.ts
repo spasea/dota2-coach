@@ -78,6 +78,62 @@ describe('Lost candidate scoring', () => {
     });
   });
 
+  it('scores the strongest actionable pressure instead of a blocked structure', () => {
+    const signals = createDecisionSignals({
+      structureRisks: [
+        {
+          buildingId: 'radiant:tower:2:top',
+          structureId: 'radiant:tower:2:top',
+          level: 'critical',
+          damageActivity: 'active',
+          activeDamageEvents: 3,
+          recentDamageEvents: 3,
+          lastDamageAgeMs: 500,
+        },
+        {
+          buildingId: 'radiant:tower:3:mid',
+          structureId: 'radiant:tower:3:mid',
+          level: 'pressured',
+          damageActivity: 'recent',
+          activeDamageEvents: 0,
+          recentDamageEvents: 1,
+          lastDamageAgeMs: 8_000,
+        },
+      ],
+      defenses: [
+        {
+          buildingId: 'radiant:tower:2:top',
+          structureId: 'radiant:tower:2:top',
+          arrivalClass: 'teleport_available',
+          readyDefenders: 1,
+          uncertainSupports: 0,
+          visibleEnemyLowerBound: 3,
+          numericalRisk: 'outnumbered',
+          response: 'blocked',
+        },
+        {
+          buildingId: 'radiant:tower:3:mid',
+          structureId: 'radiant:tower:3:mid',
+          arrivalClass: 'teleport_available',
+          readyDefenders: 1,
+          uncertainSupports: 0,
+          visibleEnemyLowerBound: 1,
+          numericalRisk: 'acceptable',
+          response: 'allowed',
+        },
+      ],
+    });
+
+    expect(scoreOf('DEFEND', signals)).toMatchObject({
+      score: 30,
+      reasons: [
+        { code: 'recent_structure_damage', contribution: 20 },
+        { code: 'requester_can_teleport', contribution: 10 },
+      ],
+      penalties: [],
+    });
+  });
+
   it('scores conservative cross-map farming when an outer defense is blocked', () => {
     const signals = createDecisionSignals({
       requesterMapDepth: { zone: 'enemy_half', orientedDepth: 4_000 },
@@ -147,8 +203,11 @@ function scoreOf(
   const scored = scoreLostCandidates({ candidates: directionalCandidates(), signals, policy: decisionPolicy.scoring });
   const candidate = scored.find((entry) => entry.action === action);
 
-  expect(candidate).toBeDefined();
-  return expect(candidate);
+  if (candidate === undefined) {
+    throw new Error(`Expected ${action} to be scored.`);
+  }
+
+  return candidate;
 }
 
 function expectDeepFrozen(value: unknown): void {

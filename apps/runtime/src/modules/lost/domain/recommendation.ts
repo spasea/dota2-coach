@@ -22,11 +22,32 @@ export type LostReasonCode =
   | 'confirmed_allied_cluster'
   | 'partial_evidence';
 
-export type LostScoreTerm = Readonly<{
-  code: LostReasonCode;
-  value: number | string | boolean;
-  contribution: number;
+export type LostReasonValueByCode = Readonly<{
+  requester_low_health: number | boolean;
+  requester_low_mana: number | boolean;
+  requester_disabled: boolean;
+  active_structure_damage: number;
+  recent_structure_damage: number;
+  repeated_structure_damage: number;
+  critical_structure: string;
+  requester_already_near_structure: boolean;
+  requester_can_teleport: boolean;
+  requester_would_arrive_outnumbered: number;
+  allied_defenders_already_present: number;
+  requester_deep_and_isolated: boolean;
+  enemies_missing: number;
+  enemies_visible_elsewhere: number;
+  confirmed_allied_cluster: number;
+  partial_evidence: number;
 }>;
+
+export type LostScoreTerm<Code extends LostReasonCode = LostReasonCode> = {
+  [ReasonCode in Code]: Readonly<{
+    code: ReasonCode;
+    value: LostReasonValueByCode[ReasonCode];
+    contribution: number;
+  }>;
+}[Code];
 
 export type RankedLostCandidate = Readonly<{
   action: LostAction;

@@ -11,12 +11,13 @@ import {
   type RecommendLostActionDependencies,
 } from './recommend-lost-action.js';
 
-const signalPolicy: LostPolicy = {
+const policy: LostPolicy = {
   schemaVersion: 1,
   mapDepth: { centerHalfWidth: 1_200, baseBoundary: 7_700 },
   proximity: { structureRadius: 1_600, teamClusterRadius: 1_200, minimumClusterSize: 2 },
   structureRisk: { criticalHealthPercent: 25, pressuredHealthPercent: 60, repeatedActiveDamageEvents: 2 },
   readiness: { lowHealthPercent: 25, lowManaPercent: 20 },
+  ...decisionPolicy,
 };
 
 describe('recommend Lost action use case', () => {
@@ -84,6 +85,13 @@ describe('recommend Lost action use case', () => {
       status: 'recommended',
       recommendation: { action: 'HOLD_AND_WAIT', primary: null, alternative: null },
     });
+    expect(deadHarness.savedAdvice).toEqual([expect.objectContaining({ action: 'HOLD_AND_WAIT', score: 0 })]);
+    expect(deadHarness.decisions).toEqual([
+      expect.objectContaining({ action: 'HOLD_AND_WAIT', score: 0, holdReason: 'requester_dead', reasonCodes: [] }),
+    ]);
+    expect(pausedHarness.decisions).toEqual([
+      expect.objectContaining({ action: 'HOLD_AND_WAIT', score: 0, holdReason: 'match_paused', reasonCodes: [] }),
+    ]);
   });
 
   it('emits only bounded decision metadata without Discord identity, raw snapshots, positions, or rendered text', () => {
@@ -101,6 +109,7 @@ describe('recommend Lost action use case', () => {
         action: 'RESET',
         confidence: 'high',
         reasonCodes: ['requester_low_health'],
+        holdReason: null,
       })
     );
     expect(JSON.stringify(harness.decisions[0])).not.toMatch(
@@ -121,9 +130,8 @@ function createHarness(overrides: HarnessOverrides) {
   const recommend = createRecommendLostAction({
     adviceStore,
     buildCoachContext: overrides.buildCoachContext,
-    decisionPolicy,
     monotonicNow: () => 20_000,
-    signalPolicy,
+    policy,
     translator: ({ key }) => `[${key}]`,
     recordDecision: (metadata) => decisions.push(metadata),
   });
