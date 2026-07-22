@@ -494,6 +494,12 @@ Only the selected primary action and its voice lead render a concrete destinatio
 remains generic. DEFEND target selection happens once inside scoring, so rendered structure copy cannot diverge from
 the structure that produced the score. REGROUP uses the already selected cluster and never exposes its coordinates.
 
+The final `voiceText` is audience-aware. The current requester-scoped flow passes an application-level
+`VoiceAudience` with `kind: individual` and the trusted `coachAlias`; locale composition prefixes every directional
+or `HOLD_AND_WAIT` voice with `"{coachAlias}, "` only after action, reasons, and guardrails are complete. Text title
+and body remain unaddressed. A future command-wide flow may extend the audience union without changing scoring,
+presentation facts, or hardcoding an individual salutation inside recommendation copy.
+
 `LostTranslationKey` is a closed TypeScript union derived from the parameter map. Every catalog must satisfy the full
 mapped type, so a new reason/action/guardrail cannot silently omit its translation. Catalogs are TypeScript modules,
 not YAML and not policy data. Russian count-sensitive messages use native `Intl.PluralRules('ru')`; no i18n package is
@@ -1578,6 +1584,8 @@ Completed:
 - Added typed immutable action destinations to scored candidates: DEFEND carries the exact selected `structureId`,
   while REGROUP carries the already selected cluster hero names. Primary voice/text renders the approved Russian
   Dota shorthand and hero list; alternatives remain generic and no lane/route inference was added.
+- Added typed individual voice audience composition. Requester `coachAlias` prefixes the complete directional and
+  `HOLD_AND_WAIT` voice, while text output and privacy-bounded decision metadata remain unchanged.
 - Implemented requester-scoped orchestration from `BuildCoachContext` through signals, safety, scoring, stability,
   confidence, selection, presentation, rendering, memory, and bounded decision metadata.
 - `HOLD_AND_WAIT` now replaces prior advice memory with `score: 0` and is logged with stable `holdReason` and empty
@@ -1589,7 +1597,7 @@ Completed:
 
 Verification evidence (`2026-07-22`):
 
-- `npm run check` — passed, including typecheck, ESLint, Prettier, all `35` Jest suites / `312` tests, ESM build, and
+- `npm run check` — passed, including typecheck, ESLint, Prettier, all `35` Jest suites / `313` tests, ESM build, and
   built-runtime smoke;
 - all former Phase 5 RED seams are GREEN; no `not implemented` production stub remains in the Lost vertical;
 - policy/parser, scoring, confidence, selection, context-key, hysteresis, store, presentation, locale, renderer,
@@ -1614,7 +1622,7 @@ Target end state: `green`
 Completed:
 
 - Verified type checking, ESLint, Prettier, the complete Jest suite, TypeScript ESM build, built-runtime smoke, and
-  `git diff --check`. The final repository-local check is green with 35 suites and 312 tests.
+  `git diff --check`. The final repository-local check is green with 35 suites and 313 tests.
 - Verified the Docker image and local Compose runtime, including health, authenticated ingest, unchanged HTTP
   contracts, source hot reload, and startup validation of the tracked Lost policy.
 - Verified approved requester scenarios, stale and foreign context handling, defense safety, bounded advice memory,

@@ -2,13 +2,19 @@ import type { LostRecommendation } from '../domain/recommendation.js';
 import type { LostPresentation } from './build-lost-presentation.js';
 import { lostMessage, type LostMessage, type LostTranslator } from './lost-translator.js';
 
+export type VoiceAudience = Readonly<{
+  kind: 'individual';
+  displayName: string;
+}>;
+
 export type RenderLostRecommendationInput = Readonly<{
   presentation: LostPresentation;
+  audience: VoiceAudience;
   translator: LostTranslator;
 }>;
 
 export function renderLostRecommendation(input: RenderLostRecommendationInput): LostRecommendation {
-  const { presentation, translator } = input;
+  const { audience, presentation, translator } = input;
   const voiceLead = translator(presentation.voiceLead);
   const voiceReasons = presentation.voiceReasons.map(translator);
   const voiceGuardrails = presentation.voiceGuardrails.map(translator);
@@ -21,7 +27,7 @@ export function renderLostRecommendation(input: RenderLostRecommendationInput): 
             reasons: voiceReasons.join('; '),
           })
         );
-  const voiceText =
+  const voice =
     voiceGuardrails.length === 0
       ? voiceWithReasons
       : translator(
@@ -30,6 +36,12 @@ export function renderLostRecommendation(input: RenderLostRecommendationInput): 
             guardrails: voiceGuardrails.join('; '),
           })
         );
+  const voiceText = translator(
+    lostMessage('lost.layout.voice_addressed_to_individual', {
+      displayName: audience.displayName,
+      voice,
+    })
+  );
 
   return Object.freeze({
     action: presentation.action,

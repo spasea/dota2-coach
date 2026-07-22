@@ -35,6 +35,17 @@ describe('Russian Lost translator', () => {
     ).toBe('Сблизься с группой: Axe, Crystal Maiden');
   });
 
+  it('addresses the complete voice recommendation to an individual player', () => {
+    expect(
+      translate(
+        lostMessage('lost.layout.voice_addressed_to_individual', {
+          displayName: 'Lich',
+          voice: 'Защищай нижнюю T2: постройка получает урон сейчас.',
+        })
+      )
+    ).toBe('Lich, Защищай нижнюю T2: постройка получает урон сейчас.');
+  });
+
   it.each([
     'lost.reason.requester_would_arrive_outnumbered',
     'lost.reason.enemies_missing',

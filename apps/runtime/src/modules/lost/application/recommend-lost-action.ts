@@ -169,7 +169,14 @@ function renderSelection(
     guardrails,
   });
 
-  return renderLostRecommendation({ presentation, translator });
+  return renderLostRecommendation({
+    presentation,
+    audience: {
+      kind: 'individual',
+      displayName: context.requester.identity.coachAlias,
+    },
+    translator,
+  });
 }
 
 type RememberDecisionInput = Readonly<{

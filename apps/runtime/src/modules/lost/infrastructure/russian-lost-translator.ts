@@ -48,6 +48,7 @@ export const RUSSIAN_LOST_CATALOG = Object.freeze({
   'lost.hold.insufficient_evidence': () => 'пока не форсируй действие: не хватает надёжной информации',
   'lost.hold.insufficient_confidence': () => 'пока не форсируй действие: нет достаточно уверенного варианта',
   'lost.layout.title': ({ action }) => `I'm lost → ${action}`,
+  'lost.layout.voice_addressed_to_individual': ({ displayName, voice }) => `${displayName}, ${voice}`,
   'lost.layout.voice_with_reasons': ({ action, reasons }) => `${action}: ${reasons}.`,
   'lost.layout.voice_with_guardrails': ({ voice, guardrails }) => `${voice} ${guardrails}.`,
   'lost.layout.best_action': ({ action }) => `Лучшее действие: ${action}.`,

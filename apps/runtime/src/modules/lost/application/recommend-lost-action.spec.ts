@@ -42,7 +42,9 @@ describe('recommend Lost action use case', () => {
     });
     const harness = createHarness({ buildCoachContext: () => ({ status: 'ready', context }) });
 
-    expect(harness.recommend({ discordUserId: context.requester.identity.discordUserId })).toMatchObject({
+    const result = harness.recommend({ discordUserId: context.requester.identity.discordUserId });
+
+    expect(result).toMatchObject({
       status: 'recommended',
       recommendation: {
         action: 'RESET',
@@ -51,6 +53,9 @@ describe('recommend Lost action use case', () => {
         primary: { action: 'RESET', score: 70 },
       },
     });
+    const voiceText = result.status === 'recommended' ? result.recommendation.voiceText : '';
+
+    expect(voiceText.startsWith(`${context.requester.identity.coachAlias}, `)).toBe(true);
     expect(harness.savedAdvice).toEqual([
       expect.objectContaining({
         clientId: context.requester.identity.clientId,
@@ -77,10 +82,15 @@ describe('recommend Lost action use case', () => {
     const deadHarness = createHarness({ buildCoachContext: () => ({ status: 'ready', context: dead }) });
     const pausedHarness = createHarness({ buildCoachContext: () => ({ status: 'ready', context: paused }) });
 
-    expect(deadHarness.recommend({ discordUserId: dead.requester.identity.discordUserId })).toMatchObject({
+    const deadResult = deadHarness.recommend({ discordUserId: dead.requester.identity.discordUserId });
+
+    expect(deadResult).toMatchObject({
       status: 'recommended',
       recommendation: { action: 'HOLD_AND_WAIT', primary: null, alternative: null },
     });
+    const deadVoiceText = deadResult.status === 'recommended' ? deadResult.recommendation.voiceText : '';
+
+    expect(deadVoiceText.startsWith(`${dead.requester.identity.coachAlias}, `)).toBe(true);
     expect(pausedHarness.recommend({ discordUserId: paused.requester.identity.discordUserId })).toMatchObject({
       status: 'recommended',
       recommendation: { action: 'HOLD_AND_WAIT', primary: null, alternative: null },
@@ -132,7 +142,13 @@ function createHarness(overrides: HarnessOverrides) {
     buildCoachContext: overrides.buildCoachContext,
     monotonicNow: () => 20_000,
     policy,
-    translator: ({ key }) => `[${key}]`,
+    translator: (message) => {
+      if (message.key === 'lost.layout.voice_addressed_to_individual') {
+        return `${message.params.displayName}, ${message.params.voice}`;
+      }
+
+      return `[${message.key}]`;
+    },
     recordDecision: (metadata) => decisions.push(metadata),
   });
 

@@ -42,6 +42,7 @@ export type LostTranslationParams = Readonly<{
   'lost.hold.insufficient_evidence': undefined;
   'lost.hold.insufficient_confidence': undefined;
   'lost.layout.title': Readonly<{ action: string }>;
+  'lost.layout.voice_addressed_to_individual': Readonly<{ displayName: string; voice: string }>;
   'lost.layout.voice_with_reasons': Readonly<{ action: string; reasons: string }>;
   'lost.layout.voice_with_guardrails': Readonly<{ voice: string; guardrails: string }>;
   'lost.layout.best_action': Readonly<{ action: string }>;

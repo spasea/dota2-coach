@@ -48,6 +48,7 @@ describe('Lost recommendation rendering', () => {
 
     const recommendation = renderLostRecommendation({
       presentation,
+      audience: { kind: 'individual', displayName: 'Invoker' },
       translator: createKeyTranslator(translatedMessages),
     });
 
@@ -63,10 +64,20 @@ describe('Lost recommendation rendering', () => {
     expect(recommendation.voiceText).toContain('[lost.reason.requester_disabled]');
     expect(recommendation.voiceText).not.toContain('[lost.reason.requester_low_mana]');
     expect(recommendation.textBody).toContain('[lost.reason.requester_low_mana]');
+    expect(recommendation.textTitle).not.toContain('Invoker');
+    expect(recommendation.textBody).not.toContain('Invoker');
+    expect(translatedMessages).toContainEqual({
+      key: 'lost.layout.voice_addressed_to_individual',
+      params: {
+        displayName: 'Invoker',
+        voice: expect.stringContaining('[lost.action.reset]'),
+      },
+    });
     expect(translatedMessages).toContainEqual({ key: 'lost.layout.title', params: { action: 'RESET' } });
   });
 
   it('renders HOLD_AND_WAIT without primary or alternative candidates', () => {
+    const translatedMessages: LostMessage[] = [];
     const recommendation = renderLostRecommendation({
       presentation: {
         action: 'HOLD_AND_WAIT',
@@ -82,7 +93,8 @@ describe('Lost recommendation rendering', () => {
         unknownCodes: [],
         guardrailCodes: [],
       },
-      translator: createKeyTranslator([]),
+      audience: { kind: 'individual', displayName: 'Lich' },
+      translator: createKeyTranslator(translatedMessages),
     });
 
     expect(recommendation).toMatchObject({
@@ -92,6 +104,13 @@ describe('Lost recommendation rendering', () => {
       confidence: 'high',
     });
     expect(recommendation.voiceText).toContain('[lost.hold.insufficient_evidence]');
+    expect(translatedMessages).toContainEqual({
+      key: 'lost.layout.voice_addressed_to_individual',
+      params: {
+        displayName: 'Lich',
+        voice: expect.stringContaining('[lost.hold.insufficient_evidence]'),
+      },
+    });
   });
 });
 
