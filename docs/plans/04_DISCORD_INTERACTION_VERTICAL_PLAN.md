@@ -284,8 +284,10 @@ coach:v1:role:5
     raw SDK response, raw GSI snapshot, or arbitrary message content.
 75. Provisioning is the explicit exception for `controlMessageId`: its whole purpose is to emit the operator-facing
     ID. No secret or user identity is emitted with it.
-76. Reconnect/resume after a successful initial connection is delegated to `discord.js` and observed with safe
-    lifecycle logs. Interaction handlers never perform login/reconnect.
+76. Reconnect/resume after a successful initial connection is delegated to `discord.js` and observed with one safe
+    structured lifecycle record: code `DISCORD_GATEWAY_STATE_CHANGED` and state `disconnected`, `reconnecting`, or
+    `resumed`. The record contains no raw SDK error, payload, user identity, token, alias, or message content.
+    Interaction handlers never perform login/reconnect.
 
 ### Runtime lifecycle
 
@@ -299,8 +301,10 @@ coach:v1:role:5
     panel before HTTP binding and before logging `runtime started`.
 81. If a later startup step fails, every resource already started in that attempt is stopped in reverse order. A
     Discord startup failure leaves no HTTP listener; an HTTP bind failure destroys the logged-in Discord client.
-82. Shutdown first prevents new Discord interactions, then closes HTTP and destroys the Discord client. Stop is
-    idempotent and attempts all cleanup even if one resource fails.
+82. Shutdown first prevents new Discord interactions, then closes HTTP and destroys the Discord client. It does not
+    drain or await interactions already executing when shutdown begins; those requests may finish only on a
+    best-effort basis while cleanup proceeds. Stop is idempotent and attempts both HTTP and Discord cleanup even if
+    one resource fails.
 83. Normal runtime readiness means all enabled mandatory adapters are ready. `GET /health` is not exposed while an
     enabled Discord adapter is invalid or still starting.
 84. A Discord disconnect after successful startup does not terminate the HTTP/GSI runtime immediately. SDK reconnect
@@ -327,6 +331,8 @@ The following remain deliberately outside this implementation contract:
 9. Automatic deletion of an old panel during reprovisioning. Operators explicitly remove obsolete panels.
 10. A generic integration lifecycle framework. A small composed lifecycle is sufficient for HTTP plus one Discord
     client; extraction requires a second proven use case.
+11. Graceful draining, a shutdown deadline, or delivery guarantees for interactions already executing when shutdown
+    begins. Live evidence must precede adding this policy or configuration.
 
 ## Scope Exclusions
 
@@ -1080,7 +1086,120 @@ Status: `not-started`
 
 Target end state: `red-expected`
 
-Add failing integration intent specs for:
+### Confirmed lifecycle contract
+
+- Phase 5 adds intent specs and the minimum compile-safe seams needed to express them. It does not activate Discord,
+  change the serving behavior of production `main.ts`, or make a real Discord/network request.
+- Bootstrap selects `provision_discord_panel` or `serve` from process settings before loading mode-specific documents,
+  constructing Match/Lost/HTTP, constructing a Discord SDK client, registering signals, or starting a network
+  lifecycle.
+- Provisioning remains a one-shot operation. Success reports `DISCORD_PANEL_CREATED`, returns normally, and neither
+  starts a serving runtime nor registers signal handlers. Failure reaches the entrypoint as a rejected operation and
+  maps to process exit code `1`.
+- Enabled serving registers exactly one persistent interaction listener before Discord login/readiness, validates the
+  canonical configured panel, binds HTTP last, and logs `runtime started` only after all enabled resources are ready.
+- Disabled serving never constructs, connects, validates, subscribes, or destroys a Discord adapter. Its HTTP/GSI
+  start/stop behavior remains the current runtime contract.
+- Shutdown removes/prevents new Discord interaction dispatch first, then attempts HTTP close, then attempts Discord
+  destroy. It is idempotent, attempts later cleanup after an earlier cleanup failure, and does not drain already
+  executing interactions.
+- Non-configuration normal-start failures expose only code `RUNTIME_STARTUP_ERROR` and one of the safe stages
+  `discord_connect`, `discord_panel_validation`, or `http_bind`. Existing bounded `ConfigurationError` and
+  `DiscordPanelProvisionError` contracts remain unchanged.
+- Post-start Gateway observations use code `DISCORD_GATEWAY_STATE_CHANGED` with state `disconnected`, `reconnecting`,
+  or `resumed`. Raw SDK errors are neither logged nor propagated into interaction handling.
+
+### Test seams
+
+Add narrow SDK-free ports/fakes for the following behavior. Exact private helper names may change, but these ownership
+boundaries must not:
+
+- a process runner that resolves the mode, performs mode-aware loading/construction, and returns either one-shot
+  completion or a started serving runtime to the entrypoint;
+- a serving runtime lifecycle that owns ordered HTTP/Discord start, rollback, stop gating, and idempotence;
+- a Discord serving port that can register/remove one interaction handler, connect, validate the panel, publish
+  through the already resolved channel, observe safe Gateway state changes, and destroy the client;
+- injected factories, lifecycle operations, signal registration, and structured log sinks so every Phase 5 spec uses
+  deterministic fakes and no real port, token, timer, signal, or Discord connection.
+
+Do not introduce a generic lifecycle registry/framework, expose `discord.js` objects to bootstrap, move Match/Lost
+ownership into Discord, or make the provisioning path depend on serving-only factories.
+
+### RED spec matrix
+
+#### Process mode and one-shot provisioning
+
+- mode selection happens before mode-specific construction or network side effects;
+- provisioning reads only common logging/locale plus Discord configuration and does not read client or Lost-policy
+  documents;
+- provisioning success logs the structured panel result, performs provisioner-owned cleanup, returns one-shot
+  completion, and does not call serving construction/start or signal registration;
+- provisioning failure is safely logged/mapped to process exit code `1`, with no serving construction, signal
+  registration, or HTTP bind;
+- serving mode never calls the provisioner, and `DISCORD_CREATE_PANEL` remains the only selector for the one-shot path.
+
+#### Serving startup and readiness
+
+- disabled Discord preserves the existing real HTTP health/GSI lifecycle and performs zero Discord factory calls;
+- enabled startup order is exactly:
+
+  ```text
+  register interaction listener
+  -> connect/login/ready
+  -> validate panel
+  -> bind HTTP
+  -> log runtime started
+  ```
+
+- the registered callback delegates to the existing contained `dispatchDiscordInteraction` path and never performs
+  login, validation, reconnect, or runtime construction;
+- no HTTP listener or `runtime started` record exists while Discord is connecting or panel validation is pending;
+- exactly one handler is registered for one runtime start, including after Gateway reconnect/resume observations.
+
+#### Startup rollback
+
+| Failure point             | Required observable result                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Discord connect/readiness | interaction intake disabled; Discord destroy attempted; no panel validation or HTTP bind             |
+| Discord panel validation  | interaction intake disabled; Discord destroy attempted; no HTTP bind                                 |
+| HTTP bind                 | interaction intake disabled; Discord destroy attempted; no `runtime started` record                  |
+| rollback cleanup          | every later applicable cleanup is still attempted; startup exposes only the original safe stage/code |
+
+Each non-configuration case rejects with `RUNTIME_STARTUP_ERROR` and the corresponding approved stage. Specs assert
+the bounded metadata and prove that token, raw error text, SDK payloads, Discord user IDs, aliases, and message content
+are absent.
+
+#### Shutdown
+
+- the first stop call disables new interaction dispatch before any resource cleanup;
+- stop then attempts HTTP close and Discord destroy in that order;
+- a failure from either cleanup does not prevent attempting the other cleanup;
+- repeated or concurrent stop calls do not repeat cleanup side effects;
+- an interaction already executing is not awaited as a shutdown dependency; no drain counter, timeout, queue, or new
+  configuration is introduced;
+- disabled Discord shutdown remains the existing idempotent HTTP-only path.
+
+#### Gateway lifecycle observability
+
+- disconnect, reconnecting, and resume observations each emit `DISCORD_GATEWAY_STATE_CHANGED` with only the approved
+  state and safe infrastructure metadata;
+- disconnect does not stop HTTP, change process readiness, create another handler, or call login from application
+  code;
+- reconnect/resume remains owned by `discord.js`; the application only observes it;
+- listener and lifecycle callbacks contain their own failures so no rejected promise escapes the event emitter.
+
+#### Build and local-operation seams
+
+- the built-runtime smoke fixture supplies an explicit disabled Discord document and performs no external Discord
+  network work;
+- the default Compose configuration renders with the tracked disabled Discord document, blank credentials path, and
+  `DISCORD_CREATE_PANEL=false`;
+- provisioning and enabled-serving command/config seams can be represented without adding a process, container,
+  deployment manifest, or committed secret.
+
+### Expected RED boundary
+
+New failing integration intent specs cover:
 
 - bootstrap selection between provisioning and serving before side effects;
 - provisioning success returning without runtime start/signal registration;
@@ -1094,11 +1213,16 @@ Add failing integration intent specs for:
 - startup errors containing safe stage/code only;
 - built-runtime/Compose seams that do not require real Discord for disabled/smoke configurations.
 
+The new specs may fail through one explicit bounded missing-lifecycle seam. They must compile, and failures must not be
+caused by real network access, open handles, nondeterministic timing, missing fixtures, or changes to already approved
+Phase 2/4 behavior.
+
 Exit criteria:
 
 - New specs fail only for missing process/lifecycle composition.
 - All unit/application behavior from Phases 2 and 4 remains green.
 - Production `main.ts` still follows the prior lifecycle until Phase 6.
+- No Discord client is constructed and no HTTP/Discord lifecycle behavior is activated by Phase 5 production code.
 
 ## Phase 6 — Runtime Lifecycle GREEN
 
@@ -1173,28 +1297,30 @@ Exit criteria:
 
 ## Acceptance Matrix
 
-| Capability           | Required evidence                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------ |
-| Process modes        | Provisioning and serving are explicit, mutually exclusive, and selected before side effects            |
-| Provision exit       | Successful creation/pin logs the ID, cleans up, and exits `0`; failure exits non-zero                  |
-| No bind in provision | HTTP/GSI never listens and Match/Lost runtime state is not constructed                                 |
-| Configuration        | Public/private YAML split, strict schema, string snowflakes, conditional invariants, no secret leakage |
-| Panel ownership      | Provisioner creates once; normal mode validates exact pinned panel without mutation                    |
-| Panel contract       | Two rows, enabled Lost, disabled Buy, five roles, stable `coach:v1:*` IDs                              |
-| SDK boundary         | `discord.js` types stay in `integrations/discord`; Match/Lost use public APIs only                     |
-| Gateway              | One persistent listener and `Guilds` intent only; no collector or privileged intent                    |
-| Validation           | Only configured guild/channel/message/version/button reaches application use cases                     |
-| ACK                  | Every recognized accepted/rejected interaction replies or defers before the Discord deadline           |
-| Debounce             | Half-open monotonic `(matchId,userId,lost)` window prevents duplicate scoring and stays bounded        |
-| Lost scope           | One accepted click produces one requester-scoped Lost invocation                                       |
-| Text delivery        | One public configured-channel message contains alias, role, score, confidence, coverage, and details   |
-| Error visibility     | Validation/context/duplicate/delivery errors and role results are ephemeral                            |
-| Role override        | Five role buttons remain requester-only, match-scoped, idempotent, and independent of Lost             |
-| Localization         | Typed keys and strict current locale; orchestration tests are not coupled to full Russian strings      |
-| Privacy              | No token, Discord user ID, alias, raw payload, or recommendation text in structured logs               |
-| Lifecycle            | Enabled Discord readiness precedes HTTP bind; failures roll back; stop is complete and idempotent      |
-| Compatibility        | Existing health/GSI/Lost/scoring/hysteresis/console contracts and checks remain green                  |
-| Scope                | No TTS/voice, Buy engine, HTTP interactions, persistence, extra process/container, or deploy work      |
+| Capability           | Required evidence                                                                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Process modes        | Provisioning and serving are explicit, mutually exclusive, and selected before side effects                                                                     |
+| Provision exit       | Successful creation/pin logs the ID, cleans up, and exits `0`; failure exits non-zero                                                                           |
+| No bind in provision | HTTP/GSI never listens and Match/Lost runtime state is not constructed                                                                                          |
+| Configuration        | Public/private YAML split, strict schema, string snowflakes, conditional invariants, no secret leakage                                                          |
+| Panel ownership      | Provisioner creates once; normal mode validates exact pinned panel without mutation                                                                             |
+| Panel contract       | Two rows, enabled Lost, disabled Buy, five roles, stable `coach:v1:*` IDs                                                                                       |
+| SDK boundary         | `discord.js` types stay in `integrations/discord`; Match/Lost use public APIs only                                                                              |
+| Gateway              | One persistent listener and `Guilds` intent only; no collector or privileged intent                                                                             |
+| Validation           | Only configured guild/channel/message/version/button reaches application use cases                                                                              |
+| ACK                  | Every recognized accepted/rejected interaction replies or defers before the Discord deadline                                                                    |
+| Debounce             | Half-open monotonic `(matchId,userId,lost)` window prevents duplicate scoring and stays bounded                                                                 |
+| Lost scope           | One accepted click produces one requester-scoped Lost invocation                                                                                                |
+| Text delivery        | One public configured-channel message contains alias, role, score, confidence, coverage, and details                                                            |
+| Error visibility     | Validation/context/duplicate/delivery errors and role results are ephemeral                                                                                     |
+| Role override        | Five role buttons remain requester-only, match-scoped, idempotent, and independent of Lost                                                                      |
+| Localization         | Typed keys and strict current locale; orchestration tests are not coupled to full Russian strings                                                               |
+| Privacy              | No token, Discord user ID, alias, raw payload, or recommendation text in structured logs                                                                        |
+| Lifecycle            | Enabled Discord readiness precedes HTTP bind; failures roll back; stop gates interactions and attempts HTTP/Discord cleanup without draining in-flight handlers |
+| Startup errors       | Normal-start failures expose `RUNTIME_STARTUP_ERROR` plus only `discord_connect`, `discord_panel_validation`, or `http_bind`                                    |
+| Gateway logs         | Disconnect/reconnect/resume emit `DISCORD_GATEWAY_STATE_CHANGED` with an approved state and no raw SDK data                                                     |
+| Compatibility        | Existing health/GSI/Lost/scoring/hysteresis/console contracts and checks remain green                                                                           |
+| Scope                | No TTS/voice, Buy engine, HTTP interactions, persistence, extra process/container, or deploy work                                                               |
 
 ## Status Update Rule
 
