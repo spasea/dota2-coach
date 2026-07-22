@@ -1,4 +1,4 @@
-import type { CoachLocale } from '../../../platform/i18n/locale.js';
+import { discordMessage, type DiscordTranslator } from '../application/discord-message.js';
 
 export const DISCORD_PANEL_CUSTOM_IDS = Object.freeze({
   lost: 'coach:v1:action:lost',
@@ -34,25 +34,32 @@ export type DiscordPanelDefinition = Readonly<{
   rows: readonly DiscordPanelRow[];
 }>;
 
-export function createDiscordPanelDefinition(locale: CoachLocale): DiscordPanelDefinition {
-  const copy = resolvePanelCopy(locale);
-
+export function createDiscordPanelDefinition(translator: DiscordTranslator): DiscordPanelDefinition {
   return freezePanel({
-    content: copy.content,
+    content: translator(discordMessage('discord.panel.content', undefined)),
     rows: [
       {
         buttons: [
-          button(DISCORD_PANEL_CUSTOM_IDS.lost, copy.lost, 'primary'),
-          button(DISCORD_PANEL_CUSTOM_IDS.buy, copy.buy, 'secondary', true),
+          button(
+            DISCORD_PANEL_CUSTOM_IDS.lost,
+            translator(discordMessage('discord.panel.action.lost', undefined)),
+            'primary'
+          ),
+          button(
+            DISCORD_PANEL_CUSTOM_IDS.buy,
+            translator(discordMessage('discord.panel.action.buy', undefined)),
+            'secondary',
+            true
+          ),
         ],
       },
       {
         buttons: [
-          button(DISCORD_PANEL_CUSTOM_IDS.carry, copy.carry, 'secondary'),
-          button(DISCORD_PANEL_CUSTOM_IDS.mid, copy.mid, 'secondary'),
-          button(DISCORD_PANEL_CUSTOM_IDS.offlane, copy.offlane, 'secondary'),
-          button(DISCORD_PANEL_CUSTOM_IDS.support, copy.support, 'secondary'),
-          button(DISCORD_PANEL_CUSTOM_IDS.hardSupport, copy.hardSupport, 'secondary'),
+          roleButton(DISCORD_PANEL_CUSTOM_IDS.carry, 1, translator),
+          roleButton(DISCORD_PANEL_CUSTOM_IDS.mid, 2, translator),
+          roleButton(DISCORD_PANEL_CUSTOM_IDS.offlane, 3, translator),
+          roleButton(DISCORD_PANEL_CUSTOM_IDS.support, 4, translator),
+          roleButton(DISCORD_PANEL_CUSTOM_IDS.hardSupport, 5, translator),
         ],
       },
     ],
@@ -80,33 +87,6 @@ export function parseDiscordPanelAction(customId: string): DiscordPanelAction | 
   }
 }
 
-type PanelCopy = Readonly<{
-  content: string;
-  lost: string;
-  buy: string;
-  carry: string;
-  mid: string;
-  offlane: string;
-  support: string;
-  hardSupport: string;
-}>;
-
-function resolvePanelCopy(locale: CoachLocale): PanelCopy {
-  switch (locale) {
-    case 'ru':
-      return Object.freeze({
-        content: 'Dota Coach\nВыбери действие или роль на текущий матч.',
-        lost: "I'm lost",
-        buy: 'Buy',
-        carry: '1 Carry',
-        mid: '2 Mid',
-        offlane: '3 Offlane',
-        support: '4 Support',
-        hardSupport: '5 Hard Support',
-      });
-  }
-}
-
 function button(
   customId: DiscordPanelCustomId,
   label: string,
@@ -114,6 +94,10 @@ function button(
   disabled = false
 ): DiscordPanelButton {
   return { customId, label, style, disabled };
+}
+
+function roleButton(customId: DiscordPanelCustomId, role: 1 | 2 | 3 | 4 | 5, translator: DiscordTranslator) {
+  return button(customId, translator(discordMessage('discord.role.label', { role })), 'secondary');
 }
 
 function roleAction(role: 1 | 2 | 3 | 4 | 5): DiscordPanelAction {

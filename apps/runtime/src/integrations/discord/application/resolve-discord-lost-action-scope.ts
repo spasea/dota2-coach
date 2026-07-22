@@ -1,5 +1,4 @@
 import type { BuildCoachContext, ContextUnavailableStatus } from '../../../modules/match/public.js';
-import { discordInteractionNotImplemented } from './discord-interaction-not-implemented.js';
 
 export type DiscordLostActionScope = Readonly<{
   matchId: string;
@@ -22,14 +21,27 @@ export type DiscordLostScopeContext = Readonly<{
   }>;
 }>;
 
-export function projectDiscordLostActionScope(_context: DiscordLostScopeContext): DiscordLostActionScope {
-  void _context;
-  return discordInteractionNotImplemented();
+export function projectDiscordLostActionScope(context: DiscordLostScopeContext): DiscordLostActionScope {
+  return Object.freeze({
+    matchId: context.matchId,
+    clientId: context.requester.identity.clientId,
+    discordUserId: context.requester.identity.discordUserId,
+  });
 }
 
 export function createResolveDiscordLostActionScope(
-  _buildCoachContext: BuildCoachContext
+  buildCoachContext: BuildCoachContext
 ): ResolveDiscordLostActionScope {
-  void _buildCoachContext;
-  return () => discordInteractionNotImplemented();
+  return (discordUserId) => {
+    const contextResult = buildCoachContext({ discordUserId });
+
+    if (contextResult.status !== 'ready') {
+      return Object.freeze({ status: contextResult.status });
+    }
+
+    return Object.freeze({
+      status: 'ready',
+      scope: projectDiscordLostActionScope(contextResult.context),
+    });
+  };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
+import { createRussianDiscordTranslator } from '../infrastructure/russian-discord-translator.js';
 import {
   createDiscordPanelDefinition,
   DISCORD_PANEL_CUSTOM_IDS,
@@ -9,7 +10,7 @@ import {
 
 describe('Discord control panel', () => {
   it('builds the immutable canonical Russian two-row panel', () => {
-    const panel = createDiscordPanelDefinition('ru');
+    const panel = createDiscordPanelDefinition(createRussianDiscordTranslator());
 
     expect(panel).toEqual({
       content: 'Dota Coach\nВыбери действие или роль на текущий матч.',

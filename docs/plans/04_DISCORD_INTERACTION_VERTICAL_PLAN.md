@@ -4,7 +4,7 @@
 
 - Plan status: `in-progress`
 - Issue: not assigned
-- Current implementation phase: `Phase 3 — Interaction Routing and Delivery RED (red-expected)`
+- Current implementation phase: `Phase 4 — Interaction Routing and Delivery GREEN (completed)`
 - Last updated: `2026-07-22`
 
 Status values:
@@ -771,7 +771,7 @@ Do not create empty future `voice`, `tts`, `buy`, command-wide, or generic lifec
 | ------------------------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                                         | —         | Phase 0     | `completed`   |
 | M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`   |
-| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `in-progress` |
+| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed`   |
 | M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                                  | —         | Phase 7     | `not-started` |
 
@@ -1005,9 +1005,44 @@ Exit criteria:
 
 ## Phase 4 — Interaction Routing and Delivery GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `completed`
+
+Completed:
+
+- Implemented the optional Lost `expectedMatchId` guard immediately after fresh context construction and before
+  signal derivation, scoring, clock reads, hysteresis/advice mutation, or decision recording. Callers that omit the
+  guard retain the previous latest-context behavior.
+- Implemented immutable request-local Match scope projection through `BuildCoachContext` and a bounded in-memory
+  monotonic debounce with exact tuple serialization, half-open expiry, pruning on access, match/requester separation,
+  and no rollback/release operation after acceptance.
+- Implemented the exhaustive typed Russian Discord catalog and moved canonical panel content/buttons onto the same
+  translation boundary. Lost public presentation now uses typed delivery audience/effective-role metadata, primary
+  score, confidence, and coverage count without parsing existing rendered text.
+- Implemented immutable one-message Lost presentation, explicit `HOLD_AND_WAIT` score omission, mention suppression,
+  and fail-closed `2_000`-character validation without truncation or splitting.
+- Implemented exact source validation and exhaustive action dispatch with small Lost and role paths. Lost executes
+  `preflight → debounce → defer → recommend(expectedMatchId) → present → publish once → edit`; role executes the
+  approved `defer → setRequesterRoleOverride → edit` flow without Lost, debounce, or public delivery.
+- Implemented typed availability/error mapping, safe bounded log events, acknowledgement-state tracking, no retry
+  after ambiguous response/publication attempts, and containment of failures before and after defer.
+- Added an unwired `discord.js` interaction adapter that maps message components into immutable local observations,
+  translates typed ephemeral messages at the SDK boundary, applies ephemeral flags/mention suppression, contains
+  callback rejections, and publishes only through the already resolved configured channel.
+- Removed all Phase 3 `not implemented` production seams. Gateway listener registration and runtime/bootstrap wiring
+  remain deliberately deferred to Phase 5/6.
+
+Verification evidence (`2026-07-22`):
+
+- focused interaction/delivery verification — `6` suites / `42` tests passed, including every former Phase 3 RED
+  assertion plus adapter and additional unavailable/oversize/unexpected-failure paths;
+- full Jest regression — `46` suites / `412` tests passed;
+- refreshed code-graph traces report zero production inbound callers for `createHandleDiscordButton` and
+  `dispatchDiscordInteraction`, confirming the completed feature remains behind an unwired listener seam;
+- graph-augmented source inspection found no `discord.js` import under `modules/match` or `modules/lost`;
+- `npm run check` passed: typecheck, ESLint, Prettier, all `412` tests, ESM build, and built-runtime smoke;
+- `git diff --check` passed.
 
 Implement:
 

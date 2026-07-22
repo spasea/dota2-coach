@@ -10,6 +10,7 @@ import {
   type DiscordInteractionResponder,
   type HandleDiscordButtonDependencies,
 } from './handle-discord-button.js';
+import type { PresentDiscordLostMessageResult } from './present-discord-lost-message.js';
 import type { ResolveDiscordLostActionScopeResult } from './resolve-discord-lost-action-scope.js';
 
 const guildId = '123456789012345678';
@@ -130,6 +131,37 @@ describe('Discord button routing', () => {
     ]);
   });
 
+  it('maps Lost unavailability after defer without presentation or publication', async () => {
+    const harness = createHarness({
+      recommendResult: Object.freeze({ status: 'unavailable', reason: 'game_not_in_progress' }),
+    });
+
+    await harness.handle({ interaction: interaction(), responder: harness.responder });
+
+    expect(harness.operations).toEqual([
+      `resolve_scope:${discordUserId}`,
+      'debounce:match-01:lost',
+      'defer',
+      `recommend:${discordUserId}:match-01`,
+      'edit:discord.error.match_unavailable',
+    ]);
+  });
+
+  it('fails closed on oversized presentation without attempting publication', async () => {
+    const harness = createHarness({ presentResult: Object.freeze({ status: 'too_long' }) });
+
+    await harness.handle({ interaction: interaction(), responder: harness.responder });
+
+    expect(harness.operations).toEqual([
+      `resolve_scope:${discordUserId}`,
+      'debounce:match-01:lost',
+      'defer',
+      `recommend:${discordUserId}:match-01`,
+      'present',
+      'edit:discord.lost.delivery_failed',
+    ]);
+  });
+
   it.each([
     [DISCORD_PANEL_CUSTOM_IDS.carry, 1],
     [DISCORD_PANEL_CUSTOM_IDS.mid, 2],
@@ -153,6 +185,49 @@ describe('Discord button routing', () => {
     await expect(harness.handle({ interaction: interaction(), responder: harness.responder })).resolves.toBeUndefined();
     expect(harness.operations.at(-1)).toBe('edit:discord.lost.delivery_failed');
     expect(JSON.stringify(harness.events)).not.toContain('raw Discord response');
+    expect(harness.operations.filter((operation) => operation === 'publish')).toHaveLength(1);
+  });
+
+  it('keeps public delivery successful when the final ephemeral edit fails', async () => {
+    const harness = createHarness({ editError: new Error('raw edit details') });
+
+    await expect(harness.handle({ interaction: interaction(), responder: harness.responder })).resolves.toBeUndefined();
+
+    expect(harness.operations.filter((operation) => operation === 'publish')).toHaveLength(1);
+    expect(harness.events).toContainEqual(
+      expect.objectContaining({
+        code: 'DISCORD_LOST_DELIVERED',
+        deliveryStatus: 'sent',
+      })
+    );
+    expect(JSON.stringify(harness.events)).not.toContain('raw edit details');
+  });
+
+  it('edits the deferred role response when Match rejects the update', async () => {
+    const harness = createHarness({ roleResult: Object.freeze({ status: 'snapshot_stale' }) });
+
+    await harness.handle({
+      interaction: interaction({ customId: DISCORD_PANEL_CUSTOM_IDS.support }),
+      responder: harness.responder,
+    });
+
+    expect(harness.operations).toEqual(['defer', `set_role:${discordUserId}:4`, 'edit:discord.error.gsi_unavailable']);
+  });
+
+  it('contains unexpected failures before acknowledgement with an ephemeral reply', async () => {
+    const harness = createHarness({ scopeError: new Error('raw context details') });
+
+    await expect(harness.handle({ interaction: interaction(), responder: harness.responder })).resolves.toBeUndefined();
+    expect(harness.operations).toEqual([`resolve_scope:${discordUserId}`, 'reply:discord.error.unexpected']);
+    expect(JSON.stringify(harness.events)).not.toContain('raw context details');
+  });
+
+  it('contains unexpected failures after defer with an ephemeral edit', async () => {
+    const harness = createHarness({ recommendError: new Error('raw recommendation details') });
+
+    await expect(harness.handle({ interaction: interaction(), responder: harness.responder })).resolves.toBeUndefined();
+    expect(harness.operations.at(-1)).toBe('edit:discord.error.unexpected');
+    expect(JSON.stringify(harness.events)).not.toContain('raw recommendation details');
   });
 });
 
@@ -161,7 +236,11 @@ type HarnessOptions = Readonly<{
   scopeResult?: ResolveDiscordLostActionScopeResult;
   recommendResult?: RecommendLostActionResult;
   roleResult?: SetRequesterRoleOverrideResult;
+  presentResult?: PresentDiscordLostMessageResult;
   publishError?: Error;
+  scopeError?: Error;
+  recommendError?: Error;
+  editError?: Error;
 }>;
 
 function createHarness(options: HarnessOptions = {}) {
@@ -178,7 +257,7 @@ function createHarness(options: HarnessOptions = {}) {
     },
     editEphemeral: (message) => {
       operations.push(`edit:${message.key}`);
-      return Promise.resolve();
+      return options.editError === undefined ? Promise.resolve() : Promise.reject(options.editError);
     },
   });
   const dependencies: HandleDiscordButtonDependencies = Object.freeze({
@@ -191,6 +270,11 @@ function createHarness(options: HarnessOptions = {}) {
     }),
     resolveLostActionScope: (requesterId) => {
       operations.push(`resolve_scope:${requesterId}`);
+
+      if (options.scopeError !== undefined) {
+        throw options.scopeError;
+      }
+
       return (
         options.scopeResult ??
         Object.freeze({
@@ -201,6 +285,11 @@ function createHarness(options: HarnessOptions = {}) {
     },
     recommendLostAction: (command) => {
       operations.push(`recommend:${command.discordUserId}:${command.expectedMatchId ?? 'none'}`);
+
+      if (options.recommendError !== undefined) {
+        throw options.recommendError;
+      }
+
       return options.recommendResult ?? recommendedResult;
     },
     setRequesterRoleOverride: (command) => {
@@ -209,10 +298,13 @@ function createHarness(options: HarnessOptions = {}) {
     },
     presentLostMessage: () => {
       operations.push('present');
-      return Object.freeze({
-        status: 'ready',
-        message: Object.freeze({ content: 'safe recommendation', suppressMentions: true }),
-      });
+      return (
+        options.presentResult ??
+        Object.freeze({
+          status: 'ready',
+          message: Object.freeze({ content: 'safe recommendation', suppressMentions: true }),
+        })
+      );
     },
     publishMessage: () => {
       operations.push('publish');

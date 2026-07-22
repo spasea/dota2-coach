@@ -76,6 +76,9 @@ export function createRecommendLostAction(dependencies: RecommendLostActionDepen
     if (contextResult.status !== 'ready') {
       return Object.freeze({ status: 'unavailable', reason: contextResult.status });
     }
+    if (command.expectedMatchId !== undefined && command.expectedMatchId !== contextResult.context.matchId) {
+      return Object.freeze({ status: 'unavailable', reason: 'match_changed' });
+    }
 
     return recommendForContext(contextResult.context, dependencies);
   };

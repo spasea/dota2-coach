@@ -12,6 +12,7 @@ import {
 } from 'discord.js';
 
 import type { DiscordPanelButton, DiscordPanelDefinition, DiscordPanelRow } from '../panel/discord-panel.js';
+import type { DiscordPublicMessage, PublishDiscordMessage } from '../discord.types.js';
 import type {
   DiscordPanelChannel,
   DiscordPanelGateway,
@@ -25,7 +26,12 @@ const permissionFlags: Readonly<Record<DiscordPanelPermission, bigint>> = Object
   pin_messages: PermissionFlagsBits.PinMessages,
 });
 
-export function createDiscordGatewayAdapter(botToken: string): DiscordPanelGateway {
+export type DiscordGatewayAdapter = DiscordPanelGateway &
+  Readonly<{
+    publishMessage: PublishDiscordMessage;
+  }>;
+
+export function createDiscordGatewayAdapter(botToken: string): DiscordGatewayAdapter {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   let resolvedChannel: TextChannel | null = null;
 
@@ -83,10 +89,24 @@ export function createDiscordGatewayAdapter(botToken: string): DiscordPanelGatew
       const message = await requireResolvedChannel(channel, resolvedChannel).messages.fetch(messageId);
       return toPanelMessage(message);
     },
+    publishMessage: async (message) => {
+      if (resolvedChannel === null) {
+        throw new Error('Discord channel was not resolved by this adapter.');
+      }
+
+      await resolvedChannel.send(toDiscordPublicMessageOptions(message));
+    },
     destroy: async () => {
       resolvedChannel = null;
       await client.destroy();
     },
+  });
+}
+
+export function toDiscordPublicMessageOptions(message: DiscordPublicMessage) {
+  return Object.freeze({
+    content: message.content,
+    allowedMentions: Object.freeze({ parse: Object.freeze([]) }),
   });
 }
 
