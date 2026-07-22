@@ -62,6 +62,28 @@ describe('Discord panel lifecycle', () => {
     expect(fixture.operations.at(-1)).toBe('destroy');
   });
 
+  it('fails before message creation when required provisioning permissions are missing', async () => {
+    const fixture = createGatewayFixture({ permissions: [] });
+    const provision = createProvisionDiscordPanel(fixture.gateway, jest.fn());
+
+    await expect(provision({ guildId, textChannelId: channelId, panel })).rejects.toMatchObject({
+      code: 'DISCORD_PANEL_PROVISION_ERROR',
+      stage: 'permissions',
+    });
+    expect(fixture.operations).toEqual(['connect', 'resolve_text_channel', 'destroy']);
+  });
+
+  it('maps one-shot destroy failure without attempting destroy twice', async () => {
+    const fixture = createGatewayFixture({ destroyError: new Error('raw destroy details') });
+    const provision = createProvisionDiscordPanel(fixture.gateway, jest.fn());
+
+    const result = await provision({ guildId, textChannelId: channelId, panel }).catch((error: unknown) => error);
+
+    expect(result).toMatchObject({ code: 'DISCORD_PANEL_PROVISION_ERROR', stage: 'destroy' });
+    expect(String(result)).not.toContain('raw destroy details');
+    expect(fixture.operations.filter((operation) => operation === 'destroy')).toHaveLength(1);
+  });
+
   it.each([
     ['connect', { connectError: new Error('connect') }, ['connect', 'destroy']],
     ['channel resolution', { resolveError: new Error('resolve') }, ['connect', 'resolve_text_channel', 'destroy']],
@@ -96,6 +118,7 @@ describe('Discord panel lifecycle', () => {
   it.each([
     ['missing permissions', { permissions: [] }, 'missing_permissions', ['connect', 'resolve_text_channel']],
     ['different author', { authorId: '567890123456789012' }, 'wrong_author', validationOperations],
+    ['different message', { fetchedMessageId: '678901234567890123' }, 'wrong_location', validationOperations],
     ['unpinned message', { pinned: false }, 'not_pinned', validationOperations],
     [
       'different canonical payload',
@@ -127,7 +150,9 @@ type GatewayFixtureOptions = Readonly<{
   createError?: Error;
   pinError?: Error;
   deleteError?: Error;
+  destroyError?: Error;
   fetchedPanel?: DiscordPanelDefinition;
+  fetchedMessageId?: string;
   permissions?: readonly (typeof REQUIRED_DISCORD_PANEL_PERMISSIONS)[number][];
   authorId?: string;
   pinned?: boolean;
@@ -171,7 +196,7 @@ function createGatewayFixture(options: GatewayFixtureOptions = {}) {
       operations.push('fetch_message');
       return Promise.resolve(
         Object.freeze({
-          id: messageId,
+          id: options.fetchedMessageId ?? messageId,
           guildId,
           channelId,
           authorId: options.authorId ?? botUserId,
@@ -182,7 +207,7 @@ function createGatewayFixture(options: GatewayFixtureOptions = {}) {
     },
     destroy: () => {
       operations.push('destroy');
-      return Promise.resolve();
+      return options.destroyError === undefined ? Promise.resolve() : Promise.reject(options.destroyError);
     },
   });
 

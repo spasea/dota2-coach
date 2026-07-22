@@ -4,7 +4,7 @@
 
 - Plan status: `in-progress`
 - Issue: not assigned
-- Current implementation phase: `Phase 2 — Configuration and Provisioning GREEN (not-started)`
+- Current implementation phase: `Phase 3 — Interaction Routing and Delivery RED (not-started)`
 - Last updated: `2026-07-22`
 
 Status values:
@@ -719,7 +719,7 @@ Do not create empty future `voice`, `tts`, `buy`, command-wide, or generic lifec
 | Milestone                                                     | RED phase | GREEN phase | Status        |
 | ------------------------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                                         | —         | Phase 0     | `completed`   |
-| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `not-started` |
+| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`   |
 | M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `not-started` |
 | M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                                  | —         | Phase 7     | `not-started` |
@@ -822,9 +822,43 @@ Exit criteria:
 
 ## Phase 2 — Configuration and Provisioning GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `completed`
+
+Completed:
+
+- Added `discord.js 14.27.0`, compatible with the runtime's Node 24 contract, and committed its resolved dependency
+  graph in the runtime lock file.
+- Implemented strict immutable Discord process parsing, discriminated public YAML parsing, private credentials
+  parsing, mode invariants, string snowflakes, safe source/syntax/validation errors, and mode-aware loading that never
+  reads or accepts credentials when Discord is disabled.
+- Added the tracked disabled local public document, tracked credentials example, ignored `*.local.yaml` secret path,
+  and Compose config/mount/env seams. The default local stack remains Discord-disabled; an enabled run must explicitly
+  supply `DISCORD_CREDENTIALS_PATH`.
+- Implemented the immutable canonical two-row Russian panel and exhaustive versioned custom-ID parser. Provisioning,
+  validation, and later interaction routing share the same SDK-free panel value.
+- Added a narrow SDK-free Gateway port and a `discord.js` adapter using only the `Guilds` intent. SDK values remain in
+  `integrations/discord`; the adapter owns login/ready, exact guild-text resolution, effective permission projection,
+  message send/pin/delete/fetch, observed panel mapping, mention suppression, and destroy.
+- Implemented one-shot provisioning with safe stage errors, permission checks, immutable operator result, guaranteed
+  destroy, pin-failure message compensation, and explicit cleanup-failure reporting.
+- Implemented read-only normal validation for required permissions, exact location, current-bot authorship, pinned
+  state, and canonical content/components without create/edit/pin/delete repair behavior.
+- Added deterministic loader and lifecycle coverage for disabled secret non-loading, source failures, permission
+  failure, every provisioning failure stage, single destroy behavior, compensation, and read-only validation. No test
+  opens a Discord connection.
+- Kept config loading, Gateway construction, provisioning, and validation behind unwired seams; existing runtime,
+  HTTP, Match, Lost, and console behavior remains unchanged until lifecycle phases.
+
+Verification evidence (`2026-07-22`):
+
+- `npm run check` — passed: typecheck, ESLint, Prettier, `40` suites / `370` tests, ESM build, and built-runtime smoke;
+- focused Phase 2 run — `5` suites / `57` tests passed;
+- `git diff --check` passed and the tracked ops YAML is covered by Prettier-compatible formatting;
+- refreshed code-graph inbound traces report no production caller for `loadDiscordConfig`,
+  `createDiscordGatewayAdapter`, or `createProvisionDiscordPanel`, confirming the Phase 2 boundary remains unwired;
+- no real Discord token, Gateway connection, panel mutation, HTTP bind, or secret-bearing log/snapshot was used.
 
 Implement:
 
