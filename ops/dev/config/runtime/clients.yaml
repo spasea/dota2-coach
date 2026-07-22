@@ -2,4 +2,6 @@ schema_version: 1
 
 clients:
   client-01:
-    default_role: 2
+    default_role: 1
+  client-02:
+    default_role: 5
