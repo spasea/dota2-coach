@@ -54,7 +54,24 @@ export function createDiscordGatewayAdapter(
   return Object.freeze({
     connect: async () => {
       if (!client.isReady()) {
-        await client.login(botToken);
+        let removeReadyListener = () => undefined;
+        const readyPromise = new Promise<void>((resolve) => {
+          const handleReady = () => resolve();
+          client.once(Events.ClientReady, handleReady);
+          removeReadyListener = () => {
+            client.off(Events.ClientReady, handleReady);
+          };
+        });
+
+        try {
+          await client.login(botToken);
+
+          if (!client.isReady()) {
+            await readyPromise;
+          }
+        } finally {
+          removeReadyListener();
+        }
       }
 
       if (!client.isReady()) {

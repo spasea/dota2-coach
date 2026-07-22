@@ -13,7 +13,7 @@ services:
       CHOKIDAR_INTERVAL: '250'
       CHOKIDAR_USEPOLLING: 'true'
       CLIENT_CONFIG_PATH: /etc/dota2-coach/clients.yaml
-      CLIENT_CREDENTIALS_PATH: /run/secrets/dota2-coach/client-credentials.yaml
+      CLIENT_CREDENTIALS_PATH: /run/secrets/dota2-coach/client-credentials.local.yaml
       COACH_LOCALE: ru
       DISCORD_CONFIG_PATH: /etc/dota2-coach/discord.yaml
       DISCORD_CREDENTIALS_PATH:

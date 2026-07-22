@@ -7,6 +7,37 @@ import { createDiscordGatewayAdapter } from './discord-gateway-adapter.js';
 import type { DiscordInteractionSource } from './discord-interaction-adapter.js';
 
 describe('Discord Gateway event adapter', () => {
+  it('waits for ClientReady when login resolves before the client becomes ready', async () => {
+    const fixture = createClientFixture({ initiallyReady: false });
+    const adapter = createDiscordGatewayAdapter('private-test-token', fixture.dependencies);
+
+    const connection = adapter.connect();
+    const stateAfterLogin = await Promise.race([
+      connection.then(() => 'connected'),
+      Promise.resolve('waiting-for-ready'),
+    ]);
+
+    expect(fixture.login).toHaveBeenCalledWith('private-test-token');
+    expect(stateAfterLogin).toBe('waiting-for-ready');
+    expect(fixture.client.listenerCount(Events.ClientReady)).toBe(1);
+
+    fixture.markReady();
+
+    await expect(connection).resolves.toEqual({ botUserId: '456789012345678901' });
+    expect(fixture.client.listenerCount(Events.ClientReady)).toBe(0);
+  });
+
+  it('removes the ClientReady listener when login fails', async () => {
+    const fixture = createClientFixture({
+      initiallyReady: false,
+      loginError: new Error('login failed'),
+    });
+    const adapter = createDiscordGatewayAdapter('private-test-token', fixture.dependencies);
+
+    await expect(adapter.connect()).rejects.toThrow('login failed');
+    expect(fixture.client.listenerCount(Events.ClientReady)).toBe(0);
+  });
+
   it('registers one persistent component listener and removes it explicitly', async () => {
     const fixture = createClientFixture();
     const adapter = createDiscordGatewayAdapter('private-test-token', fixture.dependencies);
@@ -84,12 +115,18 @@ describe('Discord Gateway event adapter', () => {
   });
 });
 
-function createClientFixture() {
+function createClientFixture(options: Readonly<{ initiallyReady?: boolean; loginError?: Error }> = {}) {
   const client = new EventEmitter();
-  const login = jest.fn<() => Promise<string>>().mockResolvedValue('private-test-token');
+  let ready = options.initiallyReady ?? true;
+  const login = jest.fn<(token: string) => Promise<string>>();
+  if (options.loginError === undefined) {
+    login.mockResolvedValue('private-test-token');
+  } else {
+    login.mockRejectedValue(options.loginError);
+  }
   const destroy = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
   const discordClient = Object.assign(client, {
-    isReady: () => true,
+    isReady: () => ready,
     login,
     destroy,
     user: { id: '456789012345678901' },
@@ -100,6 +137,10 @@ function createClientFixture() {
     client,
     destroy,
     login,
+    markReady: () => {
+      ready = true;
+      client.emit(Events.ClientReady, discordClient);
+    },
     dependencies: Object.freeze({ createClient: () => discordClient }),
   };
 }

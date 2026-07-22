@@ -1,4 +1,7 @@
 schema_version: 1
 
 discord:
-  enabled: false
+  enabled: true
+  guild_id: '455040408360321037'
+  text_channel_id: '1529599498261627030'
+  action_debounce_ms: 5000
