@@ -23,3 +23,23 @@ export type ClientConfigPaths = Readonly<{
 }>;
 
 export type ReadConfigText = (path: string) => Promise<string>;
+
+export type DiscordConfigYamlSources = Readonly<{
+  configYaml: string;
+  credentialsYaml?: string;
+}>;
+
+export type DiscordConfiguration =
+  | Readonly<{
+      schemaVersion: 1;
+      enabled: false;
+    }>
+  | Readonly<{
+      schemaVersion: 1;
+      enabled: true;
+      guildId: string;
+      textChannelId: string;
+      controlMessageId: string | null;
+      actionDebounceMs: number;
+      botToken: string;
+    }>;

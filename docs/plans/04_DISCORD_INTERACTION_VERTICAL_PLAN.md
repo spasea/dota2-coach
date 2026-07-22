@@ -2,9 +2,9 @@
 
 ## Status
 
-- Plan status: `approved`
+- Plan status: `in-progress`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Configuration and Provisioning RED (not-started)`
+- Current implementation phase: `Phase 2 — Configuration and Provisioning GREEN (not-started)`
 - Last updated: `2026-07-22`
 
 Status values:
@@ -588,7 +588,7 @@ The result exists only long enough to write the operator-facing structured log a
 
 ## Manual Operator Prerequisite — Discord Bot Registration
 
-Operator action status: `not-started`
+Operator action status: `completed`
 
 Required by: live provisioning and Phase 7 Discord smoke test. It may be completed in parallel with Phase 1 and does
 not block deterministic RED/GREEN unit tests, which use SDK-free fakes and never consume a real token.
@@ -754,9 +754,43 @@ Exit criteria:
 
 ## Phase 1 — Configuration and Provisioning RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
+
+Completed:
+
+- Added final SDK-free immutable contracts for disabled/enabled Discord configuration, optional credentials sources,
+  process settings, canonical panel values, typed panel actions, required channel permissions, panel observations, and
+  provisioning/validation commands.
+- Extended safe configuration-source codes with `discord`, `discord_credentials`, and `discord_combined` without
+  changing existing configuration behavior.
+- Added six explicit compile-safe production seams for process parsing, combined YAML parsing, canonical panel
+  building, custom-ID parsing, one-shot provisioning, and read-only normal validation. Every seam fails with one
+  bounded `not implemented` error and is not wired into runtime startup.
+- Added RED intent specs for strict minimal `enabled: false`, complete enabled normal/provisioning variants, required
+  explicit debounce, string snowflakes, strict public/private fields and versions, safe syntax/validation errors, and
+  secret non-disclosure.
+- Added RED panel specs for the exact two-row Russian layout, enabled Lost, disabled Buy, five role buttons, immutable
+  nested values, versioned custom IDs, and exhaustive unsupported-ID rejection.
+- Added RED lifecycle specs for exact one-shot operation order, required permissions, immutable created-message
+  result, safe stage errors, pin compensation, cleanup-failure reporting, cleanup after every startup failure stage,
+  normal-mode read-only validation, current-bot authorship, pinned state, and canonical payload matching.
+- Recorded the operator-owned Discord application/bot registration, minimal install permissions, disabled privileged
+  intents, token handling, and ID collection. The operator reports this prerequisite complete; no token was added to
+  the repository.
+- Kept `discord.js`, package/lockfile changes, config loading, tracked ops files, Compose, HTTP/runtime wiring, and all
+  real network work out of Phase 1.
+
+Verification evidence (`2026-07-22`):
+
+- `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test:smoke` — passed;
+- previous regression set excluding the four new Discord RED suites — `35` suites / `313` tests passed;
+- full Jest run is intentional RED — `4` new suites / `49` assertions fail only on the six explicit missing seams,
+  while the same `35` suites / `313` previous tests pass;
+- refreshed code graph indexes the new configuration/panel boundaries and confirms they remain unwired; no
+  `discord.js` import or package dependency exists;
+- `git diff --check` and Prettier checks passed.
 
 Add compile-safe seams and failing intent specs for:
 
