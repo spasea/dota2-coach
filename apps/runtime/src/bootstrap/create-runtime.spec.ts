@@ -98,11 +98,14 @@ function createDependencies(
     monotonicNow: () => 12_345,
     readConfigText: (path) => Promise.resolve(documents.get(path) ?? ''),
     requestIdFactory: () => 'request-01',
+    writeDebugOutput: () => undefined,
   };
 }
 
 describe('runtime composition', () => {
   it('serves health and authenticated GSI through a real HTTP server', async () => {
+    let now = 0;
+    const debugOutputs: string[] = [];
     const portProbe = createServer();
     const port = await new Promise<number>((resolve, reject) => {
       portProbe.once('error', reject);
@@ -124,7 +127,14 @@ describe('runtime composition', () => {
         });
       });
     });
-    const runtime = await createRuntime({ ...environment, PORT: String(port) }, createDependencies());
+    const runtime = await createRuntime(
+      { ...environment, LOST_CONSOLE_DEBUG_ENABLED: 'true', PORT: String(port) },
+      {
+        ...createDependencies(),
+        monotonicNow: () => now,
+        writeDebugOutput: (output) => debugOutputs.push(output),
+      }
+    );
     const address = await runtime.start();
     const baseUrl = `http://${address.host}:${address.port}`;
 
@@ -138,11 +148,24 @@ describe('runtime composition', () => {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       });
+      now = 30_000;
+      const secondGsiResponse = await fetch(`${baseUrl}/gsi`, {
+        body: JSON.stringify({
+          auth: { token: knownGsiToken },
+          provider: { timestamp: 1_753_002_030 },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
 
       expect(healthResponse.status).toBe(200);
       await expect(healthResponse.json()).resolves.toEqual({ status: 'ok' });
       expect(gsiResponse.status).toBe(200);
       await expect(gsiResponse.text()).resolves.toBe('');
+      expect(secondGsiResponse.status).toBe(200);
+      await expect(secondGsiResponse.text()).resolves.toBe('');
+      expect(debugOutputs).toHaveLength(1);
+      expect(debugOutputs[0]).toMatch(/^\[lost-debug] client=client-01\nstatus=unavailable reason=/);
     } finally {
       await runtime.stop();
     }

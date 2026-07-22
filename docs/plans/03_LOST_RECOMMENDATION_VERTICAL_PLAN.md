@@ -2,10 +2,10 @@
 
 ## Status
 
-- Plan status: `approved`
+- Plan status: `completed`
 - Issue: not assigned
-- Current implementation phase: `Phase 4 — Lost Signals and Candidate Safety GREEN (completed)`
-- Last updated: `2026-07-21`
+- Current implementation phase: `Phase 7 — Verification and Handoff (completed)`
+- Last updated: `2026-07-22`
 
 Status values:
 
@@ -1077,13 +1077,13 @@ rendering, and orchestration into a generic engine/manager, and do not create em
 
 ## Milestone Status
 
-| Milestone                                    | RED phase | GREEN phase | Status        |
-| -------------------------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline                        | —         | Phase 0     | `completed`   |
-| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed`   |
-| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed`   |
-| M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `completed`   |
-| M4. Verification and handoff                 | —         | Phase 7     | `not-started` |
+| Milestone                                    | RED phase | GREEN phase | Status      |
+| -------------------------------------------- | --------- | ----------- | ----------- |
+| M0. Contract baseline                        | —         | Phase 0     | `completed` |
+| M1. Lost factual context enablement          | Phase 1   | Phase 2     | `completed` |
+| M2. Lost signals and candidate safety        | Phase 3   | Phase 4     | `completed` |
+| M3. Scoring, rendering, and advice stability | Phase 5   | Phase 6     | `completed` |
+| M4. Verification and handoff                 | —         | Phase 7     | `completed` |
 
 ## Phase 0 — Contract Baseline
 
@@ -1597,9 +1597,20 @@ Exit criteria:
 
 ## Phase 7 — Verification and Handoff
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
+
+Completed:
+
+- Verified type checking, ESLint, Prettier, the complete Jest suite, TypeScript ESM build, built-runtime smoke, and
+  `git diff --check`. The final repository-local check is green with 35 suites and 302 tests.
+- Verified the Docker image and local Compose runtime, including health, authenticated ingest, unchanged HTTP
+  contracts, source hot reload, and startup validation of the tracked Lost policy.
+- Verified approved requester scenarios, stale and foreign context handling, defense safety, bounded advice memory,
+  logging privacy, module boundaries, and the absence of new routes or external integrations.
+- Completed the implementation handoff. The Lost Recommendation Vertical has no intentional RED specs or production
+  stubs and is ready for a later Discord text/voice integration.
 
 Run:
 
@@ -1629,8 +1640,10 @@ Verify:
 - high local `RESET` confidence does not require full team coverage;
 - no enemy building HP, DPS, attacker, target, route, or teammate-intent claim appears;
 - advice storage remains bounded across repeated requests and match rollover;
-- no new route, external integration, persistence, timer, generic scoring abstraction, or future placeholder exists;
-- no raw snapshot, token, Discord ID, alias, chat, detailed inventory, position, or rendered advice appears in logs;
+- no new route, production external integration, persistence, timer, generic scoring abstraction, or future placeholder
+  exists;
+- no raw snapshot, token, Discord ID, alias, chat, detailed inventory, or position appears in logs; the explicit
+  local-only rendered console output is documented below;
 - cross-module imports use `match/public.ts` and `lost/public.ts` only;
 - docs, YAML defaults, parser rules, and implementation remain aligned.
 
@@ -1641,6 +1654,24 @@ Exit criteria:
 - Milestones M0–M4 and Phases 0–7 are marked `completed`.
 - Plan status becomes `completed` only after verification evidence is recorded.
 - The internal Lost API is ready for a later Discord text/voice integration without decision duplication.
+
+## Post-completion Local Console Harness
+
+Status: `completed`
+
+An opt-in local debug adapter was added after the vertical handoff to exercise the existing multi-client Match → Lost
+path before Discord integration:
+
+- `LOST_CONSOLE_DEBUG_ENABLED=false` remains the safe default;
+- when enabled, each requester receives its own 30-second warm-up and output throttle;
+- a successfully recorded GSI snapshot drives the adapter, so no background timer or scheduler was added;
+- match rollover starts a fresh warm-up window for that requester;
+- output contains the configured `client_id`, recommendation text, and safe status metadata, but no token, Discord ID,
+  alias, or raw snapshot;
+- adapter failures are contained and cannot change the authenticated empty `200 OK` GSI contract;
+- console observations call the existing requester-scoped `RecommendLostAction` use case and therefore intentionally
+  participate in its advice-memory hysteresis while the debug mode is enabled;
+- the adapter imports Lost only through `lost/public.ts` and does not change Match or Lost domain/application rules.
 
 ## Acceptance Matrix
 

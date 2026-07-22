@@ -18,6 +18,7 @@ services:
       GSI_FRESHNESS_MS: 5000
       HOST: 0.0.0.0
       LOG_LEVEL: ${RUNTIME_LOG_LEVEL:-info}
+      LOST_CONSOLE_DEBUG_ENABLED: ${LOST_CONSOLE_DEBUG_ENABLED:-false}
       LOST_POLICY_PATH: /etc/dota2-coach/lost-policy.yaml
       PORT: 3000
     ports:

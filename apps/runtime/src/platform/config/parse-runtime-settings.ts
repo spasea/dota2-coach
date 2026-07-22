@@ -10,6 +10,10 @@ const runtimeSettingsSchema = z.object({
   LOST_POLICY_PATH: z.string().trim().min(1),
   GSI_FRESHNESS_MS: z.coerce.number().int().positive().default(5000),
   HOST: z.string().trim().min(1).default('0.0.0.0'),
+  LOST_CONSOLE_DEBUG_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
 });
@@ -23,6 +27,7 @@ export type RuntimeSettings = Readonly<{
   lostPolicyPath: string;
   gsiFreshnessMs: number;
   host: string;
+  lostConsoleDebugEnabled: boolean;
   logLevel: RuntimeLogLevel;
   port: number;
 }>;
@@ -41,6 +46,7 @@ export function parseRuntimeSettings(environment: Readonly<Record<string, string
     lostPolicyPath: result.data.LOST_POLICY_PATH,
     gsiFreshnessMs: result.data.GSI_FRESHNESS_MS,
     host: result.data.HOST,
+    lostConsoleDebugEnabled: result.data.LOST_CONSOLE_DEBUG_ENABLED,
     logLevel: result.data.LOG_LEVEL,
     port: result.data.PORT,
   });

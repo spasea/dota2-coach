@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 
 import type { Logger } from 'pino';
 
+import { createLostConsoleDebug } from '../integrations/console/lost-console-debug.js';
 import {
   createLostRecommendationCapability,
   parseLostPolicy,
@@ -16,6 +17,7 @@ import {
   createRecordClientSnapshot,
   createSetRequesterRoleOverride,
   type BuildCoachContext,
+  type RecordClientSnapshot,
   type SetRequesterRoleOverride,
 } from '../modules/match/public.js';
 import type { ReadConfigText } from '../platform/config/config.types.js';
@@ -29,6 +31,7 @@ import { createLogger as createPinoLogger } from '../platform/logging/create-log
 import { readMonotonicMilliseconds, type MonotonicClock } from '../platform/time/monotonic-clock.js';
 
 const GSI_BODY_LIMIT_BYTES = 1_048_576;
+const LOST_CONSOLE_DEBUG_INTERVAL_MS = 30_000;
 const PLAYER_HISTORY_RETENTION_MS = 90_000;
 const BUILDING_WINDOWS = Object.freeze({
   activeDamageMs: 6_000,
@@ -54,6 +57,7 @@ export type CreateRuntimeDependencies = Readonly<{
   monotonicNow: MonotonicClock;
   readConfigText: ReadConfigText;
   requestIdFactory: RequestIdFactory;
+  writeDebugOutput: (output: string) => void;
 }>;
 
 const defaultDependencies: CreateRuntimeDependencies = Object.freeze({
@@ -61,6 +65,7 @@ const defaultDependencies: CreateRuntimeDependencies = Object.freeze({
   monotonicNow: readMonotonicMilliseconds,
   readConfigText: (path) => readFile(path, 'utf8'),
   requestIdFactory: randomUUID,
+  writeDebugOutput: (output) => process.stdout.write(`${output}\n`),
 });
 
 export async function createRuntime(
@@ -123,10 +128,28 @@ export async function createRuntime(
       logger.info(metadata, 'lost recommendation decided');
     },
   });
+  const observeLostConsoleDebug = createLostConsoleDebug({
+    enabled: settings.lostConsoleDebugEnabled,
+    intervalMs: LOST_CONSOLE_DEBUG_INTERVAL_MS,
+    monotonicNow: dependencies.monotonicNow,
+    recommendLostAction,
+    reportFailure: () => {
+      logger.warn({ code: 'LOST_CONSOLE_DEBUG_ERROR' }, 'lost console debug output failed');
+    },
+    writeOutput: dependencies.writeDebugOutput,
+  });
+  const recordClientSnapshotWithDebug: RecordClientSnapshot = (command) => {
+    recordClientSnapshot(command);
+    observeLostConsoleDebug({
+      clientId: command.identity.clientId,
+      discordUserId: command.identity.discordUserId,
+      matchId: command.snapshot.match?.matchId ?? null,
+    });
+  };
   const app = createApp({
     gsiBodyLimitBytes: GSI_BODY_LIMIT_BYTES,
     logger,
-    recordClientSnapshot,
+    recordClientSnapshot: recordClientSnapshotWithDebug,
     requestIdFactory: dependencies.requestIdFactory,
     trustedClientRegistry,
   });
