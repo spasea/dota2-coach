@@ -26,8 +26,9 @@ function scoreCandidate(
   const reasons: LostScoreTerm[] = [];
   const penalties: LostScoreTerm[] = [];
   let score = policy.actionBases[candidate.action];
+  const actionScore = scoreLostAction(candidate.action, signals, policy);
 
-  for (const scoreTerm of scoreLostAction(candidate.action, signals, policy)) {
+  for (const scoreTerm of actionScore.terms) {
     score += scoreTerm.contribution;
 
     if (scoreTerm.contribution > 0) {
@@ -41,6 +42,7 @@ function scoreCandidate(
 
   return Object.freeze({
     action: candidate.action,
+    target: actionScore.target,
     score,
     reasons: Object.freeze(reasons),
     penalties: Object.freeze(penalties),

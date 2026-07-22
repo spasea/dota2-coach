@@ -97,6 +97,7 @@ export function createRankedCandidate(
 ): RankedLostCandidate {
   return deepFreeze({
     action,
+    target: null,
     score,
     reasons: [],
     penalties: [],

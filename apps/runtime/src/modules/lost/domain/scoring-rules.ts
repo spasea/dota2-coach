@@ -1,9 +1,14 @@
 import type { LostAction } from './candidate.js';
 import type { DefenseFeasibilitySignal, LostSignals, StructureRiskSignal } from './derive-lost-signals.js';
 import type { LostScoringPolicy } from './lost-policy.js';
-import type { LostReasonCode, LostReasonValueByCode, LostScoreTerm } from './recommendation.js';
+import type { LostActionTarget, LostReasonCode, LostReasonValueByCode, LostScoreTerm } from './recommendation.js';
 
-type ActionScorer = (signals: LostSignals, policy: LostScoringPolicy) => readonly LostScoreTerm[];
+export type LostActionScore = Readonly<{
+  terms: readonly LostScoreTerm[];
+  target: LostActionTarget | null;
+}>;
+
+type ActionScorer = (signals: LostSignals, policy: LostScoringPolicy) => LostActionScore;
 type OptionalScoreTerm = LostScoreTerm | null;
 
 type DefensePressure = Readonly<{
@@ -20,45 +25,44 @@ const actionScorers: Readonly<Record<LostAction, ActionScorer>> = Object.freeze(
   FARM_SAFELY: scoreFarmSafely,
 });
 
-export function scoreLostAction(
-  action: LostAction,
-  signals: LostSignals,
-  policy: LostScoringPolicy
-): readonly LostScoreTerm[] {
+export function scoreLostAction(action: LostAction, signals: LostSignals, policy: LostScoringPolicy): LostActionScore {
   return actionScorers[action](signals, policy);
 }
 
-function scoreReset(signals: LostSignals, policy: LostScoringPolicy): readonly LostScoreTerm[] {
-  return appliedTerms([
-    scoreTermWhen(
-      signals.requesterReadiness.health === 'low',
-      'requester_low_health',
-      true,
-      policy.contributions.RESET.requesterLowHealth
-    ),
-    scoreTermWhen(
-      signals.requesterReadiness.mana === 'low',
-      'requester_low_mana',
-      true,
-      policy.contributions.RESET.requesterLowMana
-    ),
-    scoreTermWhen(
-      signals.requesterReadiness.disabled === true,
-      'requester_disabled',
-      true,
-      policy.contributions.RESET.requesterDisabled
-    ),
-  ]);
+function scoreReset(signals: LostSignals, policy: LostScoringPolicy): LostActionScore {
+  return createActionScore(
+    appliedTerms([
+      scoreTermWhen(
+        signals.requesterReadiness.health === 'low',
+        'requester_low_health',
+        true,
+        policy.contributions.RESET.requesterLowHealth
+      ),
+      scoreTermWhen(
+        signals.requesterReadiness.mana === 'low',
+        'requester_low_mana',
+        true,
+        policy.contributions.RESET.requesterLowMana
+      ),
+      scoreTermWhen(
+        signals.requesterReadiness.disabled === true,
+        'requester_disabled',
+        true,
+        policy.contributions.RESET.requesterDisabled
+      ),
+    ])
+  );
 }
 
-function scoreDefend(signals: LostSignals, policy: LostScoringPolicy): readonly LostScoreTerm[] {
+function scoreDefend(signals: LostSignals, policy: LostScoringPolicy): LostActionScore {
   const pressure = selectDefensePressure(signals);
 
   if (pressure === null) {
-    return noScoreTerms;
+    return createActionScore(noScoreTerms);
   }
 
   const { risk, defense } = pressure;
+  const target = createStructureTarget(risk.structureId);
   const structureTerms = appliedTerms([
     scoreTermWhen(
       risk.damageActivity === 'active',
@@ -87,118 +91,141 @@ function scoreDefend(signals: LostSignals, policy: LostScoringPolicy): readonly 
   ]);
 
   if (defense === undefined) {
-    return appliedTerms([
-      ...structureTerms,
-      scoreTermWhen(
-        signals.unknowns.length > 0,
-        'partial_evidence',
-        signals.unknowns.length,
-        policy.contributions.DEFEND.partialEvidence
-      ),
-    ]);
+    return createActionScore(
+      appliedTerms([
+        ...structureTerms,
+        scoreTermWhen(
+          signals.unknowns.length > 0,
+          'partial_evidence',
+          signals.unknowns.length,
+          policy.contributions.DEFEND.partialEvidence
+        ),
+      ]),
+      target
+    );
   }
 
   const requesterIncluded = isRequesterIncludedAsDefender(defense, signals);
   const alliedDefenderCount = Math.max(0, defense.readyDefenders - Number(requesterIncluded));
   const partialEvidenceCount = signals.unknowns.length + defense.uncertainSupports;
 
-  return appliedTerms([
-    ...structureTerms,
-    scoreTermWhen(
-      defense.arrivalClass === 'already_near',
-      'requester_already_near_structure',
-      true,
-      policy.contributions.DEFEND.requesterAlreadyNearStructure
-    ),
-    scoreTermWhen(
-      defense.arrivalClass === 'teleport_available',
-      'requester_can_teleport',
-      true,
-      policy.contributions.DEFEND.requesterCanTeleport
-    ),
-    scoreTermWhen(
-      alliedDefenderCount > 0,
-      'allied_defenders_already_present',
-      alliedDefenderCount,
-      policy.contributions.DEFEND.alliedDefendersAlreadyPresent
-    ),
-    scoreTermWhen(
-      defense.numericalRisk === 'outnumbered',
-      'requester_would_arrive_outnumbered',
-      defense.visibleEnemyLowerBound,
-      policy.contributions.DEFEND.requesterWouldArriveOutnumbered
-    ),
-    scoreTermWhen(
-      partialEvidenceCount > 0,
-      'partial_evidence',
-      partialEvidenceCount,
-      policy.contributions.DEFEND.partialEvidence
-    ),
-  ]);
+  return createActionScore(
+    appliedTerms([
+      ...structureTerms,
+      scoreTermWhen(
+        defense.arrivalClass === 'already_near',
+        'requester_already_near_structure',
+        true,
+        policy.contributions.DEFEND.requesterAlreadyNearStructure
+      ),
+      scoreTermWhen(
+        defense.arrivalClass === 'teleport_available',
+        'requester_can_teleport',
+        true,
+        policy.contributions.DEFEND.requesterCanTeleport
+      ),
+      scoreTermWhen(
+        alliedDefenderCount > 0,
+        'allied_defenders_already_present',
+        alliedDefenderCount,
+        policy.contributions.DEFEND.alliedDefendersAlreadyPresent
+      ),
+      scoreTermWhen(
+        defense.numericalRisk === 'outnumbered',
+        'requester_would_arrive_outnumbered',
+        defense.visibleEnemyLowerBound,
+        policy.contributions.DEFEND.requesterWouldArriveOutnumbered
+      ),
+      scoreTermWhen(
+        partialEvidenceCount > 0,
+        'partial_evidence',
+        partialEvidenceCount,
+        policy.contributions.DEFEND.partialEvidence
+      ),
+    ]),
+    target
+  );
 }
 
-function scoreRegroup(signals: LostSignals, policy: LostScoringPolicy): readonly LostScoreTerm[] {
+function scoreRegroup(signals: LostSignals, policy: LostScoringPolicy): LostActionScore {
   const selectedCluster = signals.selectedTeamCluster;
   const partialEvidenceCount = signals.unknowns.length + Number(selectedCluster?.destinationRisk === 'unknown');
 
-  return appliedTerms([
-    scoreTermWhen(
-      signals.isolation.deep === true && signals.isolation.isolated === true,
-      'requester_deep_and_isolated',
-      true,
-      policy.contributions.REGROUP.requesterDeepAndIsolated
-    ),
-    scoreTermWhen(
-      signals.isolation.missingEnemyCount > 0,
-      'enemies_missing',
-      signals.isolation.missingEnemyCount,
-      policy.contributions.REGROUP.enemiesMissing
-    ),
-    scoreTermWhen(
-      selectedCluster !== null,
-      'confirmed_allied_cluster',
-      selectedCluster?.heroNames.length ?? 0,
-      policy.contributions.REGROUP.confirmedAlliedCluster
-    ),
-    scoreTermWhen(
-      partialEvidenceCount > 0,
-      'partial_evidence',
-      partialEvidenceCount,
-      policy.contributions.REGROUP.partialEvidence
-    ),
-  ]);
+  return createActionScore(
+    appliedTerms([
+      scoreTermWhen(
+        signals.isolation.deep === true && signals.isolation.isolated === true,
+        'requester_deep_and_isolated',
+        true,
+        policy.contributions.REGROUP.requesterDeepAndIsolated
+      ),
+      scoreTermWhen(
+        signals.isolation.missingEnemyCount > 0,
+        'enemies_missing',
+        signals.isolation.missingEnemyCount,
+        policy.contributions.REGROUP.enemiesMissing
+      ),
+      scoreTermWhen(
+        selectedCluster !== null,
+        'confirmed_allied_cluster',
+        selectedCluster?.heroNames.length ?? 0,
+        policy.contributions.REGROUP.confirmedAlliedCluster
+      ),
+      scoreTermWhen(
+        partialEvidenceCount > 0,
+        'partial_evidence',
+        partialEvidenceCount,
+        policy.contributions.REGROUP.partialEvidence
+      ),
+    ]),
+    selectedCluster === null ? null : createAlliedClusterTarget(selectedCluster.heroNames)
+  );
 }
 
-function scoreFarmSafely(signals: LostSignals, policy: LostScoringPolicy): readonly LostScoreTerm[] {
+function scoreFarmSafely(signals: LostSignals, policy: LostScoringPolicy): LostActionScore {
   const outnumberedDefense = selectMostOutnumberedDefense(signals.defenses);
   const visibleEnemyCount = outnumberedDefense?.visibleEnemyLowerBound ?? 0;
 
-  return appliedTerms([
-    scoreTermWhen(
-      outnumberedDefense !== null,
-      'requester_would_arrive_outnumbered',
-      visibleEnemyCount,
-      policy.contributions.FARM_SAFELY.requesterWouldArriveOutnumbered
-    ),
-    scoreTermWhen(
-      signals.isolation.deep === true && signals.isolation.isolated === true,
-      'requester_deep_and_isolated',
-      true,
-      policy.contributions.FARM_SAFELY.requesterDeepAndIsolated
-    ),
-    scoreTermWhen(
-      signals.isolation.missingEnemyCount > 0,
-      'enemies_missing',
-      signals.isolation.missingEnemyCount,
-      policy.contributions.FARM_SAFELY.enemiesMissing
-    ),
-    scoreTermWhen(
-      outnumberedDefense !== null && isRequesterAcrossMap(signals),
-      'enemies_visible_elsewhere',
-      visibleEnemyCount,
-      policy.contributions.FARM_SAFELY.enemiesVisibleElsewhere
-    ),
-  ]);
+  return createActionScore(
+    appliedTerms([
+      scoreTermWhen(
+        outnumberedDefense !== null,
+        'requester_would_arrive_outnumbered',
+        visibleEnemyCount,
+        policy.contributions.FARM_SAFELY.requesterWouldArriveOutnumbered
+      ),
+      scoreTermWhen(
+        signals.isolation.deep === true && signals.isolation.isolated === true,
+        'requester_deep_and_isolated',
+        true,
+        policy.contributions.FARM_SAFELY.requesterDeepAndIsolated
+      ),
+      scoreTermWhen(
+        signals.isolation.missingEnemyCount > 0,
+        'enemies_missing',
+        signals.isolation.missingEnemyCount,
+        policy.contributions.FARM_SAFELY.enemiesMissing
+      ),
+      scoreTermWhen(
+        outnumberedDefense !== null && isRequesterAcrossMap(signals),
+        'enemies_visible_elsewhere',
+        visibleEnemyCount,
+        policy.contributions.FARM_SAFELY.enemiesVisibleElsewhere
+      ),
+    ])
+  );
+}
+
+function createActionScore(terms: readonly LostScoreTerm[], target: LostActionTarget | null = null): LostActionScore {
+  return Object.freeze({ terms, target });
+}
+
+function createStructureTarget(structureId: string): LostActionTarget {
+  return Object.freeze({ kind: 'structure', structureId });
+}
+
+function createAlliedClusterTarget(heroNames: readonly string[]): LostActionTarget {
+  return Object.freeze({ kind: 'allied_cluster', heroNames: Object.freeze([...heroNames]) });
 }
 
 function selectDefensePressure(signals: LostSignals): DefensePressure | null {

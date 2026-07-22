@@ -67,6 +67,37 @@ describe('Lost presentation builder', () => {
   });
 
   it.each([
+    [
+      createConfidentCandidate('DEFEND', 80, 'high', {
+        target: { kind: 'structure', structureId: 'radiant:tower:2:bot' },
+      }),
+      { key: 'lost.action.defend_target', params: { structureId: 'radiant:tower:2:bot' } },
+    ],
+    [
+      createConfidentCandidate('REGROUP', 70, 'high', {
+        target: {
+          kind: 'allied_cluster',
+          heroNames: ['npc_dota_hero_axe', 'npc_dota_hero_crystal_maiden'],
+        },
+      }),
+      {
+        key: 'lost.action.regroup_target',
+        params: { heroNames: ['npc_dota_hero_axe', 'npc_dota_hero_crystal_maiden'] },
+      },
+    ],
+  ] as const)('includes the selected %s destination in primary and voice messages', (primary, expectedMessage) => {
+    const presentation = buildLostPresentation({
+      selection: { status: 'selected', primary, alternative: null },
+      coverage: 0.4,
+      unknowns: [],
+      guardrails: [],
+    });
+
+    expect(presentation.primary?.action).toEqual(expectedMessage);
+    expect(presentation.voiceLead).toEqual(expectedMessage);
+  });
+
+  it.each([
     ['requester_dead', 'lost.hold.requester_dead'],
     ['match_paused', 'lost.hold.match_paused'],
     ['insufficient_evidence', 'lost.hold.insufficient_evidence'],

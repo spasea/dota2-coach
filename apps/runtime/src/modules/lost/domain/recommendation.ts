@@ -4,6 +4,10 @@ import type { HoldReason, LostAction, LostBlocker, LostGuardrail, LostUnknown } 
 export type LostOutcomeAction = LostAction | 'HOLD_AND_WAIT';
 export type LostConfidence = 'high' | 'medium';
 
+export type LostActionTarget =
+  | Readonly<{ kind: 'structure'; structureId: string }>
+  | Readonly<{ kind: 'allied_cluster'; heroNames: readonly string[] }>;
+
 export type LostReasonCode =
   | 'requester_low_health'
   | 'requester_low_mana'
@@ -51,6 +55,7 @@ export type LostScoreTerm<Code extends LostReasonCode = LostReasonCode> = {
 
 export type RankedLostCandidate = Readonly<{
   action: LostAction;
+  target: LostActionTarget | null;
   score: number;
   reasons: readonly LostScoreTerm[];
   penalties: readonly LostScoreTerm[];

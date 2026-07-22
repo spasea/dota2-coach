@@ -71,6 +71,7 @@ describe('Lost candidate scoring', () => {
 
     expect(scoreOf('DEFEND', signals)).toMatchObject({
       score: 30,
+      target: { kind: 'structure', structureId: 'radiant:tower:2:top' },
       reasons: [
         { code: 'recent_structure_damage', contribution: 20 },
         { code: 'requester_can_teleport', contribution: 10 },
@@ -126,12 +127,34 @@ describe('Lost candidate scoring', () => {
 
     expect(scoreOf('DEFEND', signals)).toMatchObject({
       score: 30,
+      target: { kind: 'structure', structureId: 'radiant:tower:3:mid' },
       reasons: [
         { code: 'recent_structure_damage', contribution: 20 },
         { code: 'requester_can_teleport', contribution: 10 },
       ],
       penalties: [],
     });
+  });
+
+  it('keeps the selected allied cluster as the immutable REGROUP target', () => {
+    const signals = createDecisionSignals({
+      selectedTeamCluster: {
+        heroNames: ['npc_dota_hero_axe', 'npc_dota_hero_crystal_maiden'],
+        connectedHeroNames: ['npc_dota_hero_axe'],
+        center: { x: 0, y: 50 },
+        maxPairDistance: 100,
+        visibleEnemyLowerBound: 0,
+        destinationRisk: 'not_contradicted',
+      },
+    });
+
+    const candidate = scoreOf('REGROUP', signals);
+
+    expect(candidate.target).toEqual({
+      kind: 'allied_cluster',
+      heroNames: ['npc_dota_hero_axe', 'npc_dota_hero_crystal_maiden'],
+    });
+    expectDeepFrozen(candidate.target);
   });
 
   it('scores conservative cross-map farming when an outer defense is blocked', () => {

@@ -1,7 +1,9 @@
 export type LostTranslationParams = Readonly<{
   'lost.action.reset': undefined;
   'lost.action.defend': undefined;
+  'lost.action.defend_target': Readonly<{ structureId: string }>;
   'lost.action.regroup': undefined;
+  'lost.action.regroup_target': Readonly<{ heroNames: readonly string[] }>;
   'lost.action.farm_safely': undefined;
   'lost.reason.requester_low_health': undefined;
   'lost.reason.requester_low_mana': undefined;

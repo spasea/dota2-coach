@@ -5,7 +5,9 @@ const pluralRules = new Intl.PluralRules('ru');
 export const RUSSIAN_LOST_CATALOG = Object.freeze({
   'lost.action.reset': () => 'отступи и восстановись',
   'lost.action.defend': () => 'переместись на защиту своей постройки',
+  'lost.action.defend_target': ({ structureId }) => `Защищай ${formatStructure(structureId)}`,
   'lost.action.regroup': () => 'сблизься с союзниками',
+  'lost.action.regroup_target': ({ heroNames }) => `Сблизься с группой: ${heroNames.map(formatHeroName).join(', ')}`,
   'lost.action.farm_safely': () => 'фарми безопасно и не углубляйся',
   'lost.reason.requester_low_health': () => 'у тебя мало здоровья',
   'lost.reason.requester_low_mana': () => 'у тебя мало маны',
@@ -77,6 +79,59 @@ function formatDefenderCount(count: number): string {
 
 function formatAllyCount(count: number): string {
   return `${String(count)} ${selectPlural(count, 'союзник', 'союзника', 'союзников')}`;
+}
+
+const towerLaneLabels: Readonly<Record<string, string>> = Object.freeze({
+  top: 'верхнюю',
+  mid: 'центральную',
+  bot: 'нижнюю',
+});
+const barracksLaneLabels: Readonly<Record<string, string>> = Object.freeze({
+  top: 'верхние',
+  mid: 'центральные',
+  bot: 'нижние',
+});
+
+function formatStructure(structureId: string): string {
+  const [, structureKind, detail, lane] = structureId.split(':');
+
+  if (structureKind === 'ancient') {
+    return 'трон';
+  }
+  if (structureKind === 'tower') {
+    return formatTower(detail, lane);
+  }
+  if (structureKind === 'barracks') {
+    return formatBarracks(lane);
+  }
+
+  return 'постройку';
+}
+
+function formatTower(tier: string | undefined, lane: string | undefined): string {
+  const towerName = tier === undefined ? 'башню' : `T${tier}`;
+  const laneLabel = lane === undefined ? undefined : towerLaneLabels[lane];
+
+  return laneLabel === undefined ? towerName : `${laneLabel} ${towerName}`;
+}
+
+function formatBarracks(lane: string | undefined): string {
+  const laneLabel = lane === undefined ? undefined : barracksLaneLabels[lane];
+
+  return laneLabel === undefined ? 'казармы' : `${laneLabel} казармы`;
+}
+
+function formatHeroName(heroName: string): string {
+  return heroName
+    .replace(/^npc_dota_hero_/, '')
+    .split('_')
+    .filter((part) => part.length > 0)
+    .map(capitalize)
+    .join(' ');
+}
+
+function capitalize(value: string): string {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
 function selectPlural(count: number, one: string, few: string, many: string): string {

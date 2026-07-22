@@ -15,6 +15,27 @@ describe('Russian Lost translator', () => {
   });
 
   it.each([
+    ['radiant:tower:2:bot', 'Защищай нижнюю T2'],
+    ['dire:tower:3:top', 'Защищай верхнюю T3'],
+    ['radiant:tower:4', 'Защищай T4'],
+    ['radiant:barracks:melee:top', 'Защищай верхние казармы'],
+    ['dire:barracks:range:mid', 'Защищай центральные казармы'],
+    ['radiant:ancient', 'Защищай трон'],
+  ])('renders %s with familiar Dota structure notation', (structureId, expected) => {
+    expect(translate(lostMessage('lost.action.defend_target', { structureId }))).toBe(expected);
+  });
+
+  it('renders the selected REGROUP heroes without exposing canonical GSI prefixes', () => {
+    expect(
+      translate(
+        lostMessage('lost.action.regroup_target', {
+          heroNames: ['npc_dota_hero_axe', 'npc_dota_hero_crystal_maiden'],
+        })
+      )
+    ).toBe('Сблизься с группой: Axe, Crystal Maiden');
+  });
+
+  it.each([
     'lost.reason.requester_would_arrive_outnumbered',
     'lost.reason.enemies_missing',
     'lost.reason.enemies_visible_elsewhere',

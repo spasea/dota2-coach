@@ -174,9 +174,12 @@ replace `match`, add a second ingest path, or introduce Discord/TTS delivery.
 43. `RESET` means restoring requester HP/mana and a safe position before a new macro action. Low HP is strong evidence;
     mana is supporting evidence rather than a universal hard threshold.
 44. `DEFEND` means the requester can personally react to confirmed pressure on an own structure with acceptable
-    arrival and numerical risk.
+    arrival and numerical risk. The selected candidate retains the exact stable `structureId` used by scoring; the
+    renderer names that same destination with familiar Dota notation such as `нижняя T2`, `верхние казармы`, or
+    `трон`.
 45. `REGROUP` means reducing dangerous distance to a fresh, confirmed allied cluster in a destination that is not
-    already contradicted by stronger visible enemy presence.
+    already contradicted by stronger visible enemy presence. The selected candidate retains an immutable copy of the
+    cluster hero names and renders `Сблизься с группой: Hero A, Hero B` without inferring a lane or route.
 46. `FARM_SAFELY` means continuing resource acquisition without deep isolated exposure. It may require retreating
     toward the requester’s own half before farming.
 47. `PLAY_WITH_TEAM`, `CROSS_MAP_PRESSURE`, `ESCAPE`, and objective-specific actions are not aliases or hidden
@@ -486,6 +489,10 @@ The application presentation builder receives selected candidate facts, confiden
 maps stable domain codes to typed `{ key, params }` messages. The infrastructure locale catalog maps those messages
 to copy; the renderer only composes translated voice/text output. None of these steps recomputes scores, accesses raw
 context, invents game facts, or uses an LLM.
+
+Only the selected primary action and its voice lead render a concrete destination in this slice. Alternative copy
+remains generic. DEFEND target selection happens once inside scoring, so rendered structure copy cannot diverge from
+the structure that produced the score. REGROUP uses the already selected cluster and never exposes its coordinates.
 
 `LostTranslationKey` is a closed TypeScript union derived from the parameter map. Every catalog must satisfy the full
 mapped type, so a new reason/action/guardrail cannot silently omit its translation. Catalogs are TypeScript modules,
@@ -1568,6 +1575,9 @@ Completed:
 - Implemented the bounded in-memory requester advice store with one owned immutable latest entry per client.
 - Implemented exhaustive typed presentation mapping, strongest-two voice reasons, complete text breakdowns, injected
   locale translation, and renderer composition without domain rescoring or embedded application copy.
+- Added typed immutable action destinations to scored candidates: DEFEND carries the exact selected `structureId`,
+  while REGROUP carries the already selected cluster hero names. Primary voice/text renders the approved Russian
+  Dota shorthand and hero list; alternatives remain generic and no lane/route inference was added.
 - Implemented requester-scoped orchestration from `BuildCoachContext` through signals, safety, scoring, stability,
   confidence, selection, presentation, rendering, memory, and bounded decision metadata.
 - `HOLD_AND_WAIT` now replaces prior advice memory with `score: 0` and is logged with stable `holdReason` and empty
@@ -1577,9 +1587,9 @@ Completed:
 - Kept the existing health/GSI routes and transport behavior unchanged; no Lost HTTP route, Discord adapter, TTS,
   timer, worker, or proactive delivery was introduced.
 
-Verification evidence (`2026-07-21`):
+Verification evidence (`2026-07-22`):
 
-- `npm run check` — passed, including typecheck, ESLint, Prettier, all `34` Jest suites / `296` tests, ESM build, and
+- `npm run check` — passed, including typecheck, ESLint, Prettier, all `35` Jest suites / `312` tests, ESM build, and
   built-runtime smoke;
 - all former Phase 5 RED seams are GREEN; no `not implemented` production stub remains in the Lost vertical;
 - policy/parser, scoring, confidence, selection, context-key, hysteresis, store, presentation, locale, renderer,
@@ -1604,7 +1614,7 @@ Target end state: `green`
 Completed:
 
 - Verified type checking, ESLint, Prettier, the complete Jest suite, TypeScript ESM build, built-runtime smoke, and
-  `git diff --check`. The final repository-local check is green with 35 suites and 302 tests.
+  `git diff --check`. The final repository-local check is green with 35 suites and 312 tests.
 - Verified the Docker image and local Compose runtime, including health, authenticated ingest, unchanged HTTP
   contracts, source hot reload, and startup validation of the tracked Lost policy.
 - Verified approved requester scenarios, stale and foreign context handling, defense safety, bounded advice memory,

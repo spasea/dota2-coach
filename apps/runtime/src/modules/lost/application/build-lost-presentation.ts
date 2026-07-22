@@ -61,7 +61,8 @@ export function buildLostPresentation(input: BuildLostPresentationInput): LostPr
   }
 
   const primary = presentCandidate(input.selection.primary);
-  const alternative = input.selection.alternative === null ? null : presentCandidate(input.selection.alternative);
+  const alternative =
+    input.selection.alternative === null ? null : presentCandidate(input.selection.alternative, false);
   const strongestReasons = [...input.selection.primary.reasons]
     .sort((left, right) => right.contribution - left.contribution)
     .slice(0, 2)
@@ -73,7 +74,7 @@ export function buildLostPresentation(input: BuildLostPresentationInput): LostPr
     coverage: input.coverage,
     primary,
     alternative,
-    voiceLead: toActionMessage(input.selection.primary.action),
+    voiceLead: toActionMessage(input.selection.primary),
     voiceReasons: Object.freeze(strongestReasons),
     voiceGuardrails: guardrails,
     unknowns,
@@ -83,10 +84,10 @@ export function buildLostPresentation(input: BuildLostPresentationInput): LostPr
   });
 }
 
-function presentCandidate(candidate: ConfidentLostCandidate): LostCandidatePresentation {
+function presentCandidate(candidate: ConfidentLostCandidate, includeTarget = true): LostCandidatePresentation {
   return Object.freeze({
     candidate,
-    action: toActionMessage(candidate.action),
+    action: toActionMessage(candidate, includeTarget),
     reasons: Object.freeze(candidate.reasons.map(toReasonMessage)),
     penalties: Object.freeze(candidate.penalties.map(toReasonMessage)),
     unknowns: Object.freeze(candidate.unknowns.map(toUnknownMessage)),
@@ -94,14 +95,20 @@ function presentCandidate(candidate: ConfidentLostCandidate): LostCandidatePrese
   });
 }
 
-function toActionMessage(action: ConfidentLostCandidate['action']): LostMessage {
+function toActionMessage(candidate: ConfidentLostCandidate, includeTarget = true): LostMessage {
+  const { action, target } = candidate;
+
   switch (action) {
     case 'RESET':
       return lostMessage('lost.action.reset', undefined);
     case 'DEFEND':
-      return lostMessage('lost.action.defend', undefined);
+      return includeTarget && target?.kind === 'structure'
+        ? lostMessage('lost.action.defend_target', { structureId: target.structureId })
+        : lostMessage('lost.action.defend', undefined);
     case 'REGROUP':
-      return lostMessage('lost.action.regroup', undefined);
+      return includeTarget && target?.kind === 'allied_cluster'
+        ? lostMessage('lost.action.regroup_target', { heroNames: target.heroNames })
+        : lostMessage('lost.action.regroup', undefined);
     case 'FARM_SAFELY':
       return lostMessage('lost.action.farm_safely', undefined);
   }
