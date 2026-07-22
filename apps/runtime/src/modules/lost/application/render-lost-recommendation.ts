@@ -1,15 +1,11 @@
 import type { LostRecommendation } from '../domain/recommendation.js';
 import type { LostPresentation } from './build-lost-presentation.js';
+import type { LostRecommendationAudience } from './lost-recommendation-delivery.js';
 import { lostMessage, type LostMessage, type LostTranslator } from './lost-translator.js';
-
-export type VoiceAudience = Readonly<{
-  kind: 'individual';
-  displayName: string;
-}>;
 
 export type RenderLostRecommendationInput = Readonly<{
   presentation: LostPresentation;
-  audience: VoiceAudience;
+  audience: LostRecommendationAudience;
   translator: LostTranslator;
 }>;
 

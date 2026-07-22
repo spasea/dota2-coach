@@ -25,16 +25,25 @@ import { selectLostRecommendation } from '../domain/select-recommendation.js';
 import { applyLostStability } from '../domain/stability.js';
 import { buildLostPresentation } from './build-lost-presentation.js';
 import type { LostAdviceStore } from './lost-advice-store.js';
+import type { LostRecommendationDelivery } from './lost-recommendation-delivery.js';
 import type { LostTranslator } from './lost-translator.js';
 import { renderLostRecommendation } from './render-lost-recommendation.js';
 
 export type RecommendLostActionCommand = Readonly<{
   discordUserId: string;
+  expectedMatchId?: string;
 }>;
 
 export type RecommendLostActionResult =
-  | Readonly<{ status: 'recommended'; recommendation: LostRecommendation }>
-  | Readonly<{ status: 'unavailable'; reason: ContextUnavailableStatus | LostUnavailableReason }>;
+  | Readonly<{
+      status: 'recommended';
+      delivery: LostRecommendationDelivery;
+      recommendation: LostRecommendation;
+    }>
+  | Readonly<{
+      status: 'unavailable';
+      reason: ContextUnavailableStatus | LostUnavailableReason | 'match_changed';
+    }>;
 
 export type LostDecisionMetadata = Readonly<{
   clientId: string;
@@ -100,7 +109,17 @@ function recommendForContext(
 
   rememberAndRecordDecision({ context, contextKey, now, recommendation, selection, dependencies });
 
-  return Object.freeze({ status: 'recommended', recommendation });
+  return Object.freeze({
+    status: 'recommended',
+    delivery: Object.freeze({
+      audience: Object.freeze({
+        kind: 'individual',
+        displayName: context.requester.identity.coachAlias,
+      }),
+      effectiveRole: context.effectiveRole,
+    }),
+    recommendation,
+  });
 }
 
 type SelectDirectionalInput = Readonly<{

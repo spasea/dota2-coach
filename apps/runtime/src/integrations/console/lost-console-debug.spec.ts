@@ -5,6 +5,10 @@ import { createLostConsoleDebug } from './lost-console-debug.js';
 
 const recommendedResult: RecommendLostActionResult = Object.freeze({
   status: 'recommended',
+  delivery: Object.freeze({
+    audience: Object.freeze({ kind: 'individual', displayName: 'player' }),
+    effectiveRole: 2,
+  }),
   recommendation: Object.freeze({
     action: 'FARM_SAFELY',
     primary: null,

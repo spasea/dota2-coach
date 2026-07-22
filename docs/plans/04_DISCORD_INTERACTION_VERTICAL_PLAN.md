@@ -4,7 +4,7 @@
 
 - Plan status: `in-progress`
 - Issue: not assigned
-- Current implementation phase: `Phase 3 — Interaction Routing and Delivery RED (not-started)`
+- Current implementation phase: `Phase 3 — Interaction Routing and Delivery RED (red-expected)`
 - Last updated: `2026-07-22`
 
 Status values:
@@ -180,8 +180,10 @@ coach:v1:role:5
     are rejected without invoking Match/Lost.
 41. The custom-ID parser is exhaustive and returns a small immutable application command:
     `lost`, `buy_disabled`, or `set_role(role)`.
-42. Every recognized interaction receives an initial reply or defer within Discord's three-second contract. No Lost
-    scoring, public channel send, retry, or reconnect is allowed before acknowledgement.
+42. Every recognized interaction receives an initial reply or defer within Discord's three-second contract. Accepted
+    Lost and role actions await an ephemeral defer before scoring or role mutation. Disabled Buy, rejected source,
+    identity/context rejection, and duplicate Lost requests use an immediate ephemeral reply. No Lost scoring, role
+    mutation, public channel send, retry, or reconnect is allowed before acknowledgement.
 43. Rejected validation, identity, context, duplicate, disabled-action, and role results are ephemeral. Successful
     Lost recommendations are published as a separate public message in the configured text channel.
 44. An accepted Lost request is acknowledged with an ephemeral defer. After public delivery, that deferred response
@@ -197,8 +199,9 @@ coach:v1:role:5
 47. Before Lost scoring, the handler resolves the requester through the trusted Discord mapping and obtains a ready
     factual Match context through the existing public Match query.
 48. That preflight provides the stable `matchId` and requester identity required for routing/debounce. It does not
-    make a recommendation and does not inspect Match stores directly. The audience and effective role actually used
-    by Lost are returned by the recommendation use case for presentation consistency.
+    make a recommendation and does not inspect Match stores directly. Discord passes that `matchId` to Lost as an
+    optional transport-neutral `expectedMatchId` guard after acknowledgement. The audience and effective role
+    actually used by Lost are returned by the recommendation use case for presentation consistency.
 49. The in-memory Lost debounce key is exactly `(matchId, discordUserId, actionType)`, where the only enabled action in
     this slice is `lost`.
 50. Enabled configuration requires an explicit `action_debounce_ms`; there is no parser default. The tracked initial
@@ -207,7 +210,9 @@ coach:v1:role:5
 51. A duplicate inside the window receives an immediate ephemeral localized acknowledgement and never calls
     `recommendLostAction`.
 52. The debounce entry is recorded only after guild/channel/message/custom-ID, identity, and ready-match validation
-    succeed and immediately before the accepted interaction is deferred.
+    succeed and immediately before the accepted interaction is deferred. Once recorded, it remains until the
+    half-open window expires even if acknowledgement editing, recommendation, presentation, or public delivery later
+    fails. There is no rollback path that could reopen a click storm or an ambiguous timed-out send.
 53. Debounce is not advice hysteresis. Discord debounce prevents duplicate work/click storms; Lost advice memory
     continues to control recommendation stability across irregular request intervals.
 54. Entries are bounded to trusted users/current action scopes and expired entries are pruned on access. Match changes
@@ -217,7 +222,11 @@ coach:v1:role:5
 ### Lost text delivery
 
 56. Accepted Lost interactions call the existing public `RecommendLostAction` exactly once with the interacting
-    Discord user ID. Discord does not duplicate scoring, candidate selection, confidence, rendering, or hysteresis.
+    Discord user ID and preflight `expectedMatchId`. Lost compares the freshly built scoring context with that expected
+    match before scoring. A mismatch returns `match_changed`, produces no recommendation/public message, and leaves
+    the new match unblocked because the existing debounce entry belongs to the old match. Callers that omit the
+    optional guard retain the current behavior. Discord does not duplicate scoring, candidate selection, confidence,
+    rendering, or hysteresis.
 57. The public text mirror contains requester `coachAlias`, effective role, primary action and score, confidence,
     coverage, rendered reasons/penalties, eligible alternative, unknowns, and guardrails already produced by Lost.
 58. Discord presentation consumes typed fields. It never parses `voiceText`, `textTitle`, `textBody`, debug logs, or
@@ -232,8 +241,11 @@ coach:v1:role:5
     Lost result is an ephemeral error and is never published publicly.
 62. Public delivery targets the configured channel object, not the interaction's arbitrary channel reference, even
     though validation requires them to match.
-63. Sending one public message is the success boundary. There is no automatic retry because a timed-out request may
-    already have reached Discord and a blind retry can duplicate advice.
+63. Sending one public message is the success boundary. Before calling the SDK, the presenter validates that the final
+    plain-text content is at most Discord's `2_000`-character message limit. Oversized content is not truncated or
+    split because doing so could omit safety-relevant guardrails and would violate the one-message contract; it maps
+    to the normal localized delivery failure without a send attempt. There is no automatic retry because a timed-out
+    request may already have reached Discord and a blind retry can duplicate advice.
 
 ### Role buttons
 
@@ -253,15 +265,16 @@ coach:v1:role:5
     specs assert exhaustive non-empty translations and focused formatting cases.
 71. Initial error mapping preserves the MVP semantics:
 
-| Internal result                                                         | Discord visibility      | Meaning                                                      |
-| ----------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------ |
-| unknown Discord mapping / `client_not_found`                            | ephemeral               | no GSI client is configured for this Discord user            |
-| `snapshot_missing` / `snapshot_stale`                                   | ephemeral               | fresh game data is unavailable                               |
-| `match_unavailable` / `outside_active_session` / `game_not_in_progress` | ephemeral               | advice or role override is unavailable for the current match |
-| duplicate Lost request                                                  | ephemeral               | the request is already being processed/debounced             |
-| disabled Buy                                                            | ephemeral               | Buy is not available in this vertical                        |
-| public message send failure                                             | ephemeral when possible | advice could not be published; retry manually                |
-| role `updated`                                                          | ephemeral               | effective role changed for the active match                  |
+| Internal result                                                         | Discord visibility      | Meaning                                                       |
+| ----------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------- |
+| unknown Discord mapping / `client_not_found`                            | ephemeral               | no GSI client is configured for this Discord user             |
+| `snapshot_missing` / `snapshot_stale`                                   | ephemeral               | fresh game data is unavailable                                |
+| `match_unavailable` / `outside_active_session` / `game_not_in_progress` | ephemeral               | advice or role override is unavailable for the current match  |
+| `match_changed`                                                         | ephemeral               | active match changed after preflight; request must be retried |
+| duplicate Lost request                                                  | ephemeral               | the request is already being processed/debounced              |
+| disabled Buy                                                            | ephemeral               | Buy is not available in this vertical                         |
+| public message over limit / send failure                                | ephemeral when possible | advice could not be published; retry manually                 |
+| role `updated`                                                          | ephemeral               | effective role changed for the active match                   |
 
 72. Expected user/config/platform failures use bounded stable codes. Raw SDK error bodies and tokens are not surfaced
     to Discord users.
@@ -542,10 +555,20 @@ type DiscordActionDebounceKey = Readonly<{
   discordUserId: string;
   actionType: "lost";
 }>;
+
+type RecommendLostActionCommand = Readonly<{
+  discordUserId: string;
+  expectedMatchId?: string;
+}>;
 ```
 
 This scope is request-local. Debounce storage retains only its stable key and monotonic acceptance time, not alias,
 context, recommendation, rendered output, or raw interaction.
+
+`expectedMatchId` closes the acknowledgement time-of-check/time-of-use gap without passing a full `CoachContext`
+through Discord. When present, Lost builds its normal fresh context, compares its `matchId` before scoring, and returns
+`unavailable: match_changed` on mismatch. No scoring, hysteresis mutation, or public delivery occurs for that result.
+The field remains optional so existing console/debug callers retain their current latest-context behavior.
 
 The successful Lost application result adds the metadata used by the same scoring invocation:
 
@@ -573,6 +596,34 @@ Score: {primaryScore | "—"} · Confidence: {confidence} · Coverage: {coverage
 
 The exact localized header labels belong to the typed Discord catalog. The structural fields are fixed. Discord does
 not mention/ping the requester and does not include raw IDs.
+
+Role labels reuse the exact panel values: `1 Carry`, `2 Mid`, `3 Offlane`, `4 Support`, and `5 Hard Support`.
+
+### Initial Discord `ru` copy
+
+| Typed message key                 | Initial copy                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `discord.panel.content`           | `Dota Coach\nВыбери действие или роль на текущий матч.`                       |
+| `discord.panel.action.lost`       | `I'm lost`                                                                    |
+| `discord.panel.action.buy`        | `Buy`                                                                         |
+| `discord.role.label`              | `1 Carry` ... `5 Hard Support`                                                |
+| `discord.error.invalid_source`    | `Эта кнопка не относится к текущей панели. Используй закреплённое сообщение.` |
+| `discord.error.identity_unmapped` | `Твой Discord не привязан к игровому клиенту.`                                |
+| `discord.error.gsi_unavailable`   | `Не вижу свежих данных из игры. Проверь GSI.`                                 |
+| `discord.error.match_unavailable` | `Сейчас не вижу активный матч для тебя.`                                      |
+| `discord.error.match_changed`     | `Матч успел измениться. Нажми ещё раз.`                                       |
+| `discord.lost.duplicate`          | `Запрос уже был принят. Подожди немного.`                                     |
+| `discord.buy.disabled`            | `Buy пока не готов.`                                                          |
+| `discord.lost.delivered`          | `Совет отправлен в канал.`                                                    |
+| `discord.lost.unavailable`        | `Сейчас не могу собрать безопасный совет.`                                    |
+| `discord.lost.delivery_failed`    | `Не удалось отправить совет. Попробуй ещё раз.`                               |
+| `discord.lost.public_header`      | `{displayName} · роль {role}`                                                 |
+| `discord.lost.public_metrics`     | `Score: {score} · Confidence: {confidence} · Coverage: {coverage}/5`          |
+| `discord.role.updated`            | `Роль на этот матч: {role}.`                                                  |
+| `discord.error.unexpected`        | `Что-то пошло не так. Попробуй ещё раз.`                                      |
+
+Orchestration passes typed keys and parameters. Only the `ru` catalog owns these strings; handler/router specs do not
+assert full sentences. There is no locale fallback.
 
 ### Provisioning result
 
@@ -720,7 +771,7 @@ Do not create empty future `voice`, `tts`, `buy`, command-wide, or generic lifec
 | ------------------------------------------------------------- | --------- | ----------- | ------------- |
 | M0. Contract baseline                                         | —         | Phase 0     | `completed`   |
 | M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`   |
-| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `not-started` |
+| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `in-progress` |
 | M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `not-started` |
 | M4. Verification and handoff                                  | —         | Phase 7     | `not-started` |
 
@@ -888,9 +939,42 @@ Exit criteria:
 
 ## Phase 3 — Interaction Routing and Delivery RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
+
+Completed:
+
+- Extended the public Lost command with the optional transport-neutral `expectedMatchId` guard and extended the
+  unavailable result with `match_changed`. The guard behavior remains intentionally RED while callers that omit it
+  retain the previous console/runtime behavior.
+- Added the required immutable Lost delivery envelope to every recommended result. It contains the individual
+  audience and effective role from the exact context used for scoring; existing console output continues to consume
+  only the recommendation payload.
+- Added final SDK-free value/port contracts for button observations, the configured panel target, ephemeral response,
+  mention-safe public delivery, bounded safe log metadata, Match action scope, action debounce, Lost presentation,
+  typed Discord messages, and interaction handling.
+- Added six explicit compile-safe missing-behavior seams: same-match Lost guard, preflight projection, action debounce,
+  Russian Discord translation, public Lost presentation, and button routing. They remain unwired and fail only with
+  the bounded `Discord interaction behavior is not implemented.` error or the intentionally absent `match_changed`
+  result.
+- Added intent specs for exact source validation, disabled Buy, acknowledgement ordering, preflight/error mapping,
+  half-open match/requester debounce, accepted-entry retention, changed-match safety, one-call Lost delivery,
+  all five role paths, failure containment, typed locale coverage, detailed/HOLD public text, mention suppression,
+  and fail-closed `2_000`-character validation.
+- Kept Gateway event registration, Discord startup, SDK interaction mapping, public SDK send, Match/Lost bootstrap
+  composition, and all real network work out of Phase 3.
+
+Verification evidence (`2026-07-22`):
+
+- `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test:smoke` — passed;
+- previous regression set excluding the five new Phase 3 RED suites — `40` suites / `370` tests passed;
+- focused Phase 3 run is intentional RED — `5` suites contain `31` expected failures and `1` passing delivery-envelope
+  assertion; failures are limited to the six explicit missing-behavior seams;
+- refreshed code-graph results report zero production inbound callers for the handler, debounce, preflight, and
+  presenter factories, confirming that Phase 3 remains behind an unwired boundary;
+- no production event handler, Gateway listener, runtime startup wiring, real Discord request, or public delivery is
+  active.
 
 Resolve initial short `ru` copy and add compile-safe seams/failing specs for:
 
@@ -898,11 +982,15 @@ Resolve initial short `ru` copy and add compile-safe seams/failing specs for:
 - typed action routing and disabled Buy rejection;
 - prompt ephemeral reply/defer before Lost scoring/public send;
 - Match preflight projection into `DiscordLostActionScope`;
-- half-open monotonic debounce, exact boundary, match separation, bounded pruning, and no duplicate scoring;
+- optional `expectedMatchId` guard across the Discord defer boundary, `match_changed` mapping, and proof that mismatch
+  performs no scoring, hysteresis mutation, or public delivery;
+- half-open monotonic debounce, exact boundary, match separation, bounded pruning, no rollback after accepted
+  downstream failure, and no duplicate scoring;
 - accepted Lost calling `RecommendLostAction` exactly once;
 - unavailable Lost mapping to ephemeral errors without public output;
 - public Lost presenter with alias, effective role, primary score, confidence, coverage, and existing detailed text;
 - `HOLD_AND_WAIT` formatting without fabricated score/alternative;
+- fail-closed `2_000`-character public-content validation with no truncation, splitting, or SDK send when oversized;
 - configured-channel send, mention suppression, no blind retry, and delivery confirmation/failure mapping;
 - five idempotent role paths through `SetRequesterRoleOverride` with ephemeral results and no Lost/debounce call;
 - typed Discord translation messages and exhaustive `ru` catalog;
