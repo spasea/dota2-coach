@@ -20,3 +20,5 @@ export type DiscordPublicMessage = Readonly<{
 }>;
 
 export type PublishDiscordMessage = (message: DiscordPublicMessage) => Promise<void>;
+
+export type DiscordGatewayState = 'disconnected' | 'reconnecting' | 'resumed';

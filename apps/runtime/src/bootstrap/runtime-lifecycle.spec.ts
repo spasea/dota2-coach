@@ -15,7 +15,7 @@ describe('HTTP and Discord runtime lifecycle', () => {
     await fixture.lifecycle.start();
     await fixture.lifecycle.stop();
 
-    expect(fixture.operations).toEqual(['http_start', 'runtime_started', 'http_stop']);
+    expect(fixture.operations).toEqual(['http_start', 'runtime_started', 'http_stop', 'runtime_stopped']);
   });
 
   it('starts enabled Discord before exposing HTTP readiness', async () => {
@@ -60,6 +60,20 @@ describe('HTTP and Discord runtime lifecycle', () => {
     ]);
   });
 
+  it('maps interaction-listener setup failure to Discord connect and rolls back', async () => {
+    const fixture = createLifecycleFixture({ startAcceptingError: new Error('raw listener setup failure') });
+
+    const result = await fixture.lifecycle.start().catch((error: unknown) => error);
+
+    expect(result).toMatchObject({ code: 'RUNTIME_STARTUP_ERROR', stage: 'discord_connect' });
+    expect(String(result)).not.toContain('raw listener setup failure');
+    expect(fixture.operations).toEqual([
+      'start_accepting_interactions',
+      'stop_accepting_interactions',
+      'discord_destroy',
+    ]);
+  });
+
   it('destroys Discord after HTTP bind failure', async () => {
     const fixture = createLifecycleFixture({ httpStartError: new Error('bind') });
 
@@ -96,7 +110,12 @@ describe('HTTP and Discord runtime lifecycle', () => {
     fixture.operations.length = 0;
     await fixture.lifecycle.stop();
 
-    expect(fixture.operations).toEqual(['stop_accepting_interactions', 'http_stop', 'discord_destroy']);
+    expect(fixture.operations).toEqual([
+      'stop_accepting_interactions',
+      'http_stop',
+      'discord_destroy',
+      'runtime_stopped',
+    ]);
   });
 
   it.each([
@@ -121,7 +140,12 @@ describe('HTTP and Discord runtime lifecycle', () => {
     await Promise.all([fixture.lifecycle.stop(), fixture.lifecycle.stop()]);
     await fixture.lifecycle.stop();
 
-    expect(fixture.operations).toEqual(['stop_accepting_interactions', 'http_stop', 'discord_destroy']);
+    expect(fixture.operations).toEqual([
+      'stop_accepting_interactions',
+      'http_stop',
+      'discord_destroy',
+      'runtime_stopped',
+    ]);
   });
 
   it('does not introduce an in-flight interaction drain dependency', async () => {
@@ -169,6 +193,7 @@ describe('HTTP and Discord runtime lifecycle', () => {
 type LifecycleFixtureOptions = Readonly<{
   discordEnabled?: boolean;
   connectError?: Error;
+  startAcceptingError?: Error;
   validationError?: Error;
   httpStartError?: Error;
   stopAcceptingError?: Error;
@@ -184,6 +209,10 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
   const discord: DiscordServingLifecycle = Object.freeze({
     startAcceptingInteractions: () => {
       operations.push('start_accepting_interactions');
+
+      if (options.startAcceptingError !== undefined) {
+        throw options.startAcceptingError;
+      }
     },
     connect: () => {
       operations.push('discord_connect');
@@ -236,6 +265,9 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
     },
     recordRuntimeStarted: () => {
       operations.push('runtime_started');
+    },
+    recordRuntimeStopped: () => {
+      operations.push('runtime_stopped');
     },
   });
   const lifecycle = createRuntimeLifecycle(lifecycleOptions);

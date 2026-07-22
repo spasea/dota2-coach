@@ -5,14 +5,17 @@ import {
   ChannelType,
   Client,
   ComponentType,
+  Events,
   GatewayIntentBits,
   PermissionFlagsBits,
+  type Interaction,
   type Message,
   type TextChannel,
 } from 'discord.js';
 
+import type { DiscordGatewayState, DiscordPublicMessage, PublishDiscordMessage } from '../discord.types.js';
 import type { DiscordPanelButton, DiscordPanelDefinition, DiscordPanelRow } from '../panel/discord-panel.js';
-import type { DiscordPublicMessage, PublishDiscordMessage } from '../discord.types.js';
+import { toDiscordInteractionSource, type DiscordInteractionSource } from './discord-interaction-adapter.js';
 import type {
   DiscordPanelChannel,
   DiscordPanelGateway,
@@ -29,10 +32,23 @@ const permissionFlags: Readonly<Record<DiscordPanelPermission, bigint>> = Object
 export type DiscordGatewayAdapter = DiscordPanelGateway &
   Readonly<{
     publishMessage: PublishDiscordMessage;
+    observeInteractions: (observer: (source: DiscordInteractionSource) => Promise<void>) => () => void;
+    observeGatewayState: (observer: (state: DiscordGatewayState) => void) => () => void;
   }>;
 
-export function createDiscordGatewayAdapter(botToken: string): DiscordGatewayAdapter {
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+export type CreateDiscordGatewayAdapterDependencies = Readonly<{
+  createClient: () => Client;
+}>;
+
+const defaultDependencies: CreateDiscordGatewayAdapterDependencies = Object.freeze({
+  createClient: () => new Client({ intents: [GatewayIntentBits.Guilds] }),
+});
+
+export function createDiscordGatewayAdapter(
+  botToken: string,
+  dependencies: CreateDiscordGatewayAdapterDependencies = defaultDependencies
+): DiscordGatewayAdapter {
+  const client = dependencies.createClient();
   let resolvedChannel: TextChannel | null = null;
 
   return Object.freeze({
@@ -96,11 +112,50 @@ export function createDiscordGatewayAdapter(botToken: string): DiscordGatewayAda
 
       await resolvedChannel.send(toDiscordPublicMessageOptions(message));
     },
+    observeInteractions: (observer) => {
+      const handleInteraction = (interaction: Interaction) => {
+        if (!interaction.isMessageComponent()) {
+          return;
+        }
+
+        try {
+          void observer(toDiscordInteractionSource(interaction)).catch(() => undefined);
+        } catch {
+          return;
+        }
+      };
+
+      client.on(Events.InteractionCreate, handleInteraction);
+      return () => client.off(Events.InteractionCreate, handleInteraction);
+    },
+    observeGatewayState: (observer) => {
+      const handleDisconnect = () => notifyGatewayState(observer, 'disconnected');
+      const handleReconnecting = () => notifyGatewayState(observer, 'reconnecting');
+      const handleResume = () => notifyGatewayState(observer, 'resumed');
+
+      client.on(Events.ShardDisconnect, handleDisconnect);
+      client.on(Events.ShardReconnecting, handleReconnecting);
+      client.on(Events.ShardResume, handleResume);
+
+      return () => {
+        client.off(Events.ShardDisconnect, handleDisconnect);
+        client.off(Events.ShardReconnecting, handleReconnecting);
+        client.off(Events.ShardResume, handleResume);
+      };
+    },
     destroy: async () => {
       resolvedChannel = null;
       await client.destroy();
     },
   });
+}
+
+function notifyGatewayState(observer: (state: DiscordGatewayState) => void, state: DiscordGatewayState): void {
+  try {
+    observer(state);
+  } catch {
+    return;
+  }
 }
 
 export function toDiscordPublicMessageOptions(message: DiscordPublicMessage) {

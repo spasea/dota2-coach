@@ -773,13 +773,13 @@ Do not create empty future `voice`, `tts`, `buy`, command-wide, or generic lifec
 
 ## Milestone Status
 
-| Milestone                                                     | RED phase | GREEN phase | Status         |
-| ------------------------------------------------------------- | --------- | ----------- | -------------- |
-| M0. Contract baseline                                         | —         | Phase 0     | `completed`    |
-| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`    |
-| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed`    |
-| M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `red-expected` |
-| M4. Verification and handoff                                  | —         | Phase 7     | `not-started`  |
+| Milestone                                                     | RED phase | GREEN phase | Status        |
+| ------------------------------------------------------------- | --------- | ----------- | ------------- |
+| M0. Contract baseline                                         | —         | Phase 0     | `completed`   |
+| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`   |
+| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed`   |
+| M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `in-progress` |
+| M4. Verification and handoff                                  | —         | Phase 7     | `not-started` |
 
 ## Phase 0 — Contract Baseline
 
@@ -1259,11 +1259,11 @@ Exit criteria:
 
 ## Phase 6 — Runtime Lifecycle GREEN
 
-Status: `not-started`
+Status: `in-progress`
 
 Target end state: `completed`
 
-Implement:
+Implemented:
 
 - explicit application-mode bootstrap orchestration;
 - one-shot provisioning path with natural successful exit and failure exit code mapping;
@@ -1275,6 +1275,23 @@ Implement:
 - Compose config/mounts/env documentation for both normal and one-shot commands;
 - safe lifecycle/request/delivery logs.
 
+Implementation notes:
+
+- Production now selects one-shot provisioning or normal serving before constructing mode-specific resources.
+  Provisioning validates only common process plus Discord configuration, reports `DISCORD_PANEL_CREATED`, relies on
+  provisioner-owned client cleanup, and returns without HTTP construction, bind, or signal registration.
+- Normal serving composes the existing Match/Lost/HTTP runtime with Discord only when enabled. Enabled startup owns
+  one persistent component listener, login/readiness, canonical panel validation, HTTP bind last, safe Gateway-state
+  observation, rollback, interaction gating, and idempotent multi-resource shutdown.
+- The disabled path constructs no Discord adapter and is exercised by the built-runtime smoke. Lifecycle start/stop
+  records moved from the HTTP core to the composed lifecycle, so `runtime stopped` is emitted only after every
+  applicable cleanup succeeds.
+- `main.ts` is now a thin production entrypoint. Structured failure mapping retains only approved configuration,
+  provisioning, startup, shutdown, Gateway, interaction, and panel-result metadata; raw SDK errors and secrets are
+  not logged.
+- Local operator documentation covers disabled normal mode, the enabled public/private configuration split,
+  one-shot panel creation without the development watcher, and the subsequent read-only serving mode.
+
 Verification:
 
 - complete `npm run check`;
@@ -1282,6 +1299,18 @@ Verification:
 - focused lifecycle specs for all failure/rollback permutations;
 - Docker/Compose config rendering and health smoke in normal disabled mode;
 - `git diff --check` and module-boundary inspection.
+
+Verification evidence (`2026-07-22`):
+
+- `npm run check` — passed, including typecheck, ESLint, Prettier, `51` Jest suites / `449` tests, ESM build, and the
+  built-runtime disabled-Discord health/authenticated-GSI smoke;
+- focused process, lifecycle, serving-composition, Gateway-adapter, process-failure, and common-settings specs passed;
+- `git diff --check` passed;
+- refreshed code graph confirms production composition reaches the existing Discord application/panel capabilities,
+  `discord.js` imports remain limited to the two Discord infrastructure adapters, and no production `not implemented`
+  seam remains;
+- Docker CLI is not installed in the current environment, so actual Compose rendering and the Compose health smoke
+  remain pending. Phase 6 and M3 stay `in-progress` until that evidence is recorded.
 
 Exit criteria:
 

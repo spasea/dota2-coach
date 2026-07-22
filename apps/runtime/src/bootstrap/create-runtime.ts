@@ -176,7 +176,6 @@ export async function createRuntime(
       const port = typeof address === 'object' && address !== null ? address.port : settings.port;
       const runtimeAddress = Object.freeze({ host: settings.host, port });
 
-      logger.info(runtimeAddress, 'runtime started');
       return runtimeAddress;
     },
     stop: async () => {
@@ -194,7 +193,13 @@ export async function createRuntime(
           reject(error);
         });
       });
-      logger.info('runtime stopped');
     },
   });
+}
+
+export function createRuntimeWithLogger(
+  environment: Readonly<Record<string, string | undefined>>,
+  logger: Logger
+): Promise<Runtime> {
+  return createRuntime(environment, { ...defaultDependencies, createLogger: () => logger });
 }

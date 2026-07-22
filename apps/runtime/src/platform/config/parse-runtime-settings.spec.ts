@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { ConfigurationError } from './configuration-error.js';
-import { parseRuntimeSettings } from './parse-runtime-settings.js';
+import { parseApplicationSettings, parseRuntimeSettings } from './parse-runtime-settings.js';
 
 const requiredEnvironment = {
   CLIENT_CONFIG_PATH: '/etc/dota2-coach/clients.yaml',
@@ -11,6 +11,13 @@ const requiredEnvironment = {
 };
 
 describe('runtime process settings', () => {
+  it('loads provisioning-safe common settings without client or Lost configuration', () => {
+    const settings = parseApplicationSettings({ COACH_LOCALE: 'ru', LOG_LEVEL: 'warn' });
+
+    expect(settings).toEqual({ coachLocale: 'ru', logLevel: 'warn' });
+    expect(Object.isFrozen(settings)).toBe(true);
+  });
+
   it('applies the approved network and logging defaults', () => {
     const settings = parseRuntimeSettings(requiredEnvironment);
 

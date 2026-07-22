@@ -3,9 +3,13 @@ import type {
   ProvisionDiscordPanelResult,
 } from '../integrations/discord/panel/discord-panel-lifecycle.js';
 import type { DiscordConfiguration } from '../platform/config/config.types.js';
-import type { ConfigurationSource, ConfigurationStage } from '../platform/config/configuration-error.js';
+import {
+  ConfigurationError,
+  type ConfigurationSource,
+  type ConfigurationStage,
+} from '../platform/config/configuration-error.js';
 import type { Runtime } from './create-runtime.js';
-import { RuntimeLifecycleNotImplementedError, type RuntimeStartupStage } from './runtime-lifecycle.js';
+import type { RuntimeStartupStage } from './runtime-lifecycle.js';
 
 export type RuntimeProcessMode = Readonly<{ kind: 'serve' }> | Readonly<{ kind: 'provision_discord_panel' }>;
 
@@ -52,16 +56,42 @@ export type RunApplicationProcessDependencies = Readonly<{
   setExitCode: (exitCode: 1) => void;
 }>;
 
-export function runApplication(
+export async function runApplication(
   environment: Readonly<Record<string, string | undefined>>,
   dependencies: RunApplicationDependencies
 ): Promise<RunApplicationResult> {
-  void environment;
-  void dependencies;
-  return Promise.reject(new RuntimeLifecycleNotImplementedError());
+  const mode = dependencies.resolveProcessMode(environment);
+  const discordConfiguration = await dependencies.loadDiscordConfiguration(environment);
+
+  if (mode.kind === 'provision_discord_panel') {
+    if (!discordConfiguration.enabled) {
+      throw new ConfigurationError({ source: 'discord_combined', stage: 'validation' });
+    }
+
+    const result = await dependencies.provisionDiscordPanel(discordConfiguration);
+    dependencies.recordPanelCreated(result);
+    return Object.freeze({ kind: 'provisioned' });
+  }
+
+  const runtime = await dependencies.createServingRuntime(environment, discordConfiguration);
+  await runtime.start();
+  return Object.freeze({ kind: 'serving', runtime });
 }
 
-export function runApplicationProcess(dependencies: RunApplicationProcessDependencies): Promise<void> {
-  void dependencies;
-  return Promise.reject(new RuntimeLifecycleNotImplementedError());
+export async function runApplicationProcess(dependencies: RunApplicationProcessDependencies): Promise<void> {
+  try {
+    const result = await dependencies.execute();
+
+    if (result.kind === 'serving') {
+      dependencies.registerShutdownSignals(result.runtime.stop);
+    }
+  } catch (error) {
+    const failure = dependencies.mapFailure(error);
+
+    try {
+      dependencies.recordFailure(failure);
+    } finally {
+      dependencies.setExitCode(1);
+    }
+  }
 }
