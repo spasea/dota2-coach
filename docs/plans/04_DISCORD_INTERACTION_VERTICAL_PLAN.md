@@ -36,6 +36,9 @@ and all previously green coverage remains green.
 - [Discord component reference](https://docs.discord.com/developers/components/reference)
 - [Discord Gateway and intents](https://docs.discord.com/developers/events/gateway)
 - [Discord message and pin API](https://docs.discord.com/developers/resources/message)
+- [Discord bot registration quick start](https://docs.discord.com/developers/quick-start/getting-started)
+- [Discord OAuth2 scopes and bot permissions](https://docs.discord.com/developers/platform/oauth2-and-permissions)
+- [Discord ID lookup instructions](https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID)
 - [discord.js Client API](https://discord.js.org/docs/packages/discord.js/main/Client%3Aclass)
 
 ## Starting Point
@@ -87,8 +90,8 @@ Lost scoring and does not introduce TTS, voice, Buy scoring, a second service, o
 
 10. Discord uses a separate versioned public YAML document and, when enabled, a separate private YAML document. It is
     not embedded into the client registry or Lost policy.
-11. The public document owns `enabled`, `guild_id`, `text_channel_id`, `control_message_id`, and
-    `action_debounce_ms`. The private document owns only `bot_token`.
+11. The public document owns `enabled`, and its enabled variant owns `guild_id`, `text_channel_id`,
+    `control_message_id`, and `action_debounce_ms`. The private document owns only `bot_token`.
 12. The application repository tracks the public local-development document and a credentials example. Real local
     credentials remain in an ignored file. Production values and age-encrypted secrets remain owned by the separate
     GitOps repository and its existing Argo CD/SOPS/Kustomize flow.
@@ -100,8 +103,9 @@ Lost scoring and does not introduce TTS, voice, Buy scoring, a second service, o
 15. Discord snowflakes remain strings from parsing through SDK calls. They are never converted to JavaScript numbers.
 16. Configuration is strict and fail-fast. Unknown YAML fields, duplicate YAML keys, malformed snowflakes, blank
     required tokens, unsupported schema versions, and invalid debounce values fail before any network lifecycle starts.
-17. `enabled: false` means no login, panel validation, handler registration, or Discord network work in normal mode.
-    The public document remains valid, while an enabled/provisioning configuration requires the private token.
+17. `enabled: false` is a minimal strict public variant containing only `schema_version` and `discord.enabled`. Guild,
+    channel, message, debounce, credentials path, and token values are neither required nor accepted in that variant.
+    It means no login, panel validation, handler registration, credentials loading, or Discord network work.
 18. `DISCORD_CREATE_PANEL=true` requires `enabled: true` and requires `control_message_id` to be absent.
 19. Normal mode with `enabled: true` requires `control_message_id`. Supplying it together with
     `DISCORD_CREATE_PANEL=true` is a configuration error rather than an ignore/precedence rule.
@@ -197,8 +201,9 @@ coach:v1:role:5
     by Lost are returned by the recommendation use case for presentation consistency.
 49. The in-memory Lost debounce key is exactly `(matchId, discordUserId, actionType)`, where the only enabled action in
     this slice is `lost`.
-50. The configured initial `action_debounce_ms` default is `5_000`. Its window is half-open:
-    `0 <= now - acceptedAt < actionDebounceMs`; the exact boundary is accepted.
+50. Enabled configuration requires an explicit `action_debounce_ms`; there is no parser default. The tracked initial
+    value is `5_000`. Its window is half-open: `0 <= now - acceptedAt < actionDebounceMs`; the exact boundary is
+    accepted.
 51. A duplicate inside the window receives an immediate ephemeral localized acknowledgement and never calls
     `recommendLostAction`.
 52. The debounce entry is recorded only after guild/channel/message/custom-ID, identity, and ready-match validation
@@ -452,6 +457,17 @@ No adapter orchestration branch embeds user-facing Russian text.
 
 ### Public Discord configuration
 
+Disabled mode is the minimal strict document:
+
+```yaml
+schema_version: 1
+
+discord:
+  enabled: false
+```
+
+Enabled normal mode requires every shown field:
+
 ```yaml
 schema_version: 1
 
@@ -463,7 +479,9 @@ discord:
   action_debounce_ms: 5000
 ```
 
-Provisioning uses the same public document with `control_message_id` omitted.
+Provisioning uses the enabled public document with `control_message_id` omitted. `action_debounce_ms` remains required
+even though the one-shot provisioner does not consume it, so the same document becomes a complete normal-mode config
+after the operator adds the created message ID. No parser default is applied.
 
 ### Private Discord credentials
 
@@ -568,6 +586,93 @@ type ProvisionDiscordPanelResult = Readonly<{
 
 The result exists only long enough to write the operator-facing structured log and complete cleanup.
 
+## Manual Operator Prerequisite — Discord Bot Registration
+
+Operator action status: `not-started`
+
+Required by: live provisioning and Phase 7 Discord smoke test. It may be completed in parallel with Phase 1 and does
+not block deterministic RED/GREEN unit tests, which use SDK-free fakes and never consume a real token.
+
+Registration is a manual external action. The runtime never creates a Discord application, bot user, install link,
+guild membership, role, or token.
+
+### 1. Create the Discord application
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Create a new application for this runtime, for example `Dota Coach`.
+3. Keep the application owner/team under the intended operator account. No Application ID or Public Key is required
+   by this text-only Gateway vertical.
+
+New Discord applications normally have a bot user enabled. If the portal shows no bot user, create one from the
+`Bot` page.
+
+### 2. Generate and retain the bot token
+
+1. Open the application's `Bot` page.
+2. Under `Token`, use `Reset Token` to generate a token.
+3. Copy it immediately to a password manager or other operator-controlled secret store; Discord does not show the
+   complete value again without another reset.
+4. Do not paste it into chat, issues, plans, tracked YAML, shell history, logs, screenshots, or test fixtures.
+5. When the Phase 2 credentials example exists, place the token only in ignored
+   `ops/dev/secrets/runtime/discord-credentials.local.yaml`.
+
+If the token is exposed, reset it in the Developer Portal before any further run and replace every deployed/local
+copy. A bot token authenticates Gateway and REST requests as the bot and must be treated as a password.
+
+### 3. Keep Gateway access minimal
+
+On the `Bot` page, leave all `Privileged Gateway Intents` disabled:
+
+- Presence Intent — disabled;
+- Server Members Intent — disabled;
+- Message Content Intent — disabled.
+
+The runtime identifies with the standard `Guilds` intent only. Standard intents need no portal toggle.
+
+### 4. Configure guild installation
+
+1. Open `Installation` and keep `Guild Install` enabled. User installation is not required for this vertical.
+2. Use the Discord-provided install link.
+3. Configure the guild install with the `bot` scope. If the portal automatically includes
+   `applications.commands`, it may remain, but this vertical registers no commands.
+4. Request only these bot permissions:
+   - View Channels;
+   - Send Messages;
+   - Read Message History;
+   - Pin Messages.
+5. Do not request `Administrator`. As of the current Discord permission model, `Pin Messages` is a dedicated
+   permission and `Manage Messages` alone is not a substitute.
+
+The installing Discord member must be allowed to install apps/manage the target guild.
+
+### 5. Install into the target test guild
+
+1. Open the generated install link and add the app to the configured test guild.
+2. Confirm the bot appears as a guild member.
+3. On the target text channel, verify channel-level permission overrides still grant the four permissions above.
+   Guild-level grants can be denied by channel overrides.
+
+### 6. Collect non-secret infrastructure IDs
+
+1. In the Discord client, enable `User Settings → Advanced → Developer Mode`.
+2. Copy the target server ID and text-channel ID from their context menus.
+3. Use those values as `guild_id` and `text_channel_id` in the enabled public YAML created in Phase 2.
+4. Leave `control_message_id` absent for the first provisioning run. The one-shot provisioner will create/log it.
+
+Server, channel, and later control-message IDs are infrastructure identifiers, not credentials. They remain strings
+and are still kept out of arbitrary user-facing output.
+
+### Operator checkpoint
+
+Before live provisioning, the operator must have:
+
+- one application with one bot user;
+- one retained bot token in an operator-controlled secret store;
+- privileged intents disabled;
+- the bot installed in the target guild with the minimum permissions;
+- copied guild and text-channel IDs;
+- no token committed to the application repository.
+
 ## Proposed File Layout
 
 Exact helper names may change during implementation, but ownership must remain equivalent:
@@ -657,6 +762,8 @@ Add compile-safe seams and failing intent specs for:
 
 - strict process parsing of Discord paths and `DISCORD_CREATE_PANEL`;
 - separate strict public/private versioned Discord YAML parsing;
+- minimal `enabled: false` and complete `enabled: true` discriminated variants;
+- explicit required `action_debounce_ms` with no parser default;
 - enabled/disabled, provisioning, token, message-ID, and mutual-exclusion invariants;
 - string snowflakes and safe configuration errors;
 - canonical two-row panel description, disabled Buy, exact versioned custom IDs, and pure action parsing;
@@ -666,6 +773,9 @@ Add compile-safe seams and failing intent specs for:
 - guaranteed client destroy on every post-construction failure;
 - no token/raw SDK payload in errors or logs;
 - normal-mode panel validation as read-only behavior.
+
+Document the manual application/bot registration, minimum guild-install permissions, privileged-intent exclusions,
+token handling, and ID collection. Real registration remains operator-owned and is not called from tests or runtime.
 
 The seams may throw a bounded `not implemented` error. Existing typecheck/build and all previous green specs must
 remain green.
