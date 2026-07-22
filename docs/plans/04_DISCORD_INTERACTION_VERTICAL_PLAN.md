@@ -4,7 +4,7 @@
 
 - Plan status: `in-progress`
 - Issue: not assigned
-- Current implementation phase: `Phase 4 — Interaction Routing and Delivery GREEN (completed)`
+- Current implementation phase: `Phase 5 — Runtime Lifecycle RED (red-expected)`
 - Last updated: `2026-07-22`
 
 Status values:
@@ -773,13 +773,13 @@ Do not create empty future `voice`, `tts`, `buy`, command-wide, or generic lifec
 
 ## Milestone Status
 
-| Milestone                                                     | RED phase | GREEN phase | Status        |
-| ------------------------------------------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline                                         | —         | Phase 0     | `completed`   |
-| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`   |
-| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed`   |
-| M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `not-started` |
-| M4. Verification and handoff                                  | —         | Phase 7     | `not-started` |
+| Milestone                                                     | RED phase | GREEN phase | Status         |
+| ------------------------------------------------------------- | --------- | ----------- | -------------- |
+| M0. Contract baseline                                         | —         | Phase 0     | `completed`    |
+| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`    |
+| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed`    |
+| M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `red-expected` |
+| M4. Verification and handoff                                  | —         | Phase 7     | `not-started`  |
 
 ## Phase 0 — Contract Baseline
 
@@ -1082,9 +1082,42 @@ Exit criteria:
 
 ## Phase 5 — Runtime Lifecycle RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
+
+Completed:
+
+- Added an SDK-free process-orchestration contract for explicit provisioning/serving selection, mode-aware Discord
+  loading, one-shot completion, started-serving handoff, signal registration, bounded process failure metadata, and
+  exit-code mapping.
+- Added one small HTTP-plus-Discord lifecycle contract for interaction-intake gating, connect/validation ordering,
+  HTTP readiness, reverse startup rollback, idempotent multi-resource stop, safe Gateway-state observation, and the
+  approved startup stages.
+- Added one shared bounded `RUNTIME_LIFECYCLE_NOT_IMPLEMENTED` seam used by `runApplication`,
+  `runApplicationProcess`, and `createRuntimeLifecycle`. The seams are compile-safe and intentionally have no
+  production callers.
+- Added deterministic RED intent specs for one-shot provisioning, serving handoff, safe process failure mapping,
+  disabled HTTP-only behavior, enabled startup order, all three startup stages, rollback cleanup, shutdown order and
+  idempotence, no in-flight drain dependency, safe Gateway state logs, and callback containment.
+- Extended the built-runtime smoke fixture with an explicit minimal disabled Discord document and process settings.
+  The built process still follows the prior HTTP-only `main.ts` path and performs no Discord network work.
+- Kept the existing `createRuntime` implementation, `main.ts`, Discord SDK adapter, Match/Lost modules, HTTP routes,
+  Compose topology, and production lifecycle behavior unchanged.
+
+Verification evidence (`2026-07-22`):
+
+- `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test:smoke` — passed;
+- previous regression set — `46` suites / `412` tests passed;
+- full Jest run is intentional RED — `2` new suites / `23` tests fail only through the shared bounded missing
+  lifecycle seam, while all `412` previous tests remain green;
+- refreshed code-graph traces report zero production inbound callers for `runApplication` and
+  `createRuntimeLifecycle`; `startRuntime` still calls only the prior `createRuntime` path;
+- the tracked Compose file was parsed and its disabled Discord env/config-mount seams were asserted without a real
+  Discord connection; Docker CLI is unavailable in this environment, so actual `docker compose config` rendering
+  remains part of Phase 6 verification;
+- Prettier and `git diff --check` passed; no real token, Gateway connection, signal, or additional listening port was
+  used by the new specs.
 
 ### Confirmed lifecycle contract
 

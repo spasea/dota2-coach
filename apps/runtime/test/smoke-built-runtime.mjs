@@ -22,6 +22,11 @@ client_credentials:
     discord_user_id: '123456789012345678'
     coach_alias: Smoke Test Player
 `;
+const discordYaml = `
+schema_version: 1
+discord:
+  enabled: false
+`;
 const lostPolicyYaml = `
 schema_version: 1
 map_depth:
@@ -141,6 +146,7 @@ function spawnRuntime(environment) {
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'dota2-coach-smoke-'));
 const clientConfigPath = join(temporaryDirectory, 'clients.yaml');
 const clientCredentialsPath = join(temporaryDirectory, 'client-credentials.yaml');
+const discordConfigPath = join(temporaryDirectory, 'discord.yaml');
 const lostPolicyPath = join(temporaryDirectory, 'lost-policy.yaml');
 let runtimeProcess;
 let invalidRuntimeProcess;
@@ -149,6 +155,7 @@ try {
   await Promise.all([
     writeFile(clientConfigPath, clientsYaml, 'utf8'),
     writeFile(clientCredentialsPath, credentialsYaml, 'utf8'),
+    writeFile(discordConfigPath, discordYaml, 'utf8'),
     writeFile(lostPolicyPath, lostPolicyYaml, 'utf8'),
   ]);
 
@@ -168,6 +175,8 @@ try {
     CLIENT_CONFIG_PATH: clientConfigPath,
     CLIENT_CREDENTIALS_PATH: clientCredentialsPath,
     COACH_LOCALE: 'ru',
+    DISCORD_CONFIG_PATH: discordConfigPath,
+    DISCORD_CREATE_PANEL: 'false',
     LOST_POLICY_PATH: lostPolicyPath,
     HOST: '127.0.0.1',
     LOG_LEVEL: 'info',
