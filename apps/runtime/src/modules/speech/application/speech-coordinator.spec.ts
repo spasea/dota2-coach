@@ -112,7 +112,7 @@ function lostInput(text = 'Fire, защищай нижнюю башню.') {
 }
 
 async function settleCoordinator(): Promise<void> {
-  for (let index = 0; index < 12; index += 1) {
+  for (let index = 0; index < 50; index += 1) {
     await Promise.resolve();
   }
 }
@@ -187,6 +187,50 @@ describe('Speech coordinator', () => {
     expect(synthesizeSpeech).not.toHaveBeenCalled();
   });
 
+  it('treats the active job as a separate slot from waiting queue capacity', async () => {
+    const activeSynthesis = deferred<SpeechAudioArtifact>();
+    const synthesizeSpeech = jest
+      .fn<SynthesizeSpeech>()
+      .mockImplementationOnce(() => activeSynthesis.promise)
+      .mockResolvedValue(artifact);
+    const { coordinator } = createTestContext({
+      options: { queueCapacity: 1 },
+      synthesizeSpeech,
+    });
+
+    coordinator.start();
+    expect(coordinator.enqueue(manualInput('Активный.'))).toMatchObject({
+      status: 'queued',
+    });
+    await settleCoordinator();
+
+    expect(coordinator.enqueue(lostInput('Ожидающий.'))).toMatchObject({
+      status: 'queued',
+    });
+    expect(coordinator.enqueue(manualInput('Переполнение.'))).toEqual({
+      status: 'queue_full',
+    });
+
+    activeSynthesis.resolve(artifact);
+    await settleCoordinator();
+    expect(synthesizeSpeech).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the opaque speech job ID for TTS correlation', async () => {
+    const synthesizeSpeech = jest.fn<SynthesizeSpeech>().mockResolvedValue(artifact);
+    const { coordinator } = createTestContext({ synthesizeSpeech });
+
+    coordinator.start();
+    const admission = coordinator.enqueue(manualInput());
+    await settleCoordinator();
+
+    expect(admission).toEqual({
+      status: 'queued',
+      jobId: 'speech-job-1',
+    });
+    expect(synthesizeSpeech).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'speech-job-1' }));
+  });
+
   it('expires waiting jobs before synthesis without counting a delivery failure', async () => {
     const firstSynthesis = deferred<SpeechAudioArtifact>();
     const synthesizeSpeech = jest
@@ -235,8 +279,11 @@ describe('Speech coordinator', () => {
     ['voice_readiness', 3_000],
     ['playback', 15_000],
   ] as const)('applies an independent deadline to %s', async (stage, deadlineMs) => {
-    const synthesizeSpeech: SynthesizeSpeech = (input) =>
-      stage === 'synthesis' ? abortablePending(input.signal) : Promise.resolve(artifact);
+    const synthesizeSpeech = jest
+      .fn<SynthesizeSpeech>()
+      .mockImplementation((input) =>
+        stage === 'synthesis' ? abortablePending(input.signal) : Promise.resolve(artifact)
+      );
     const voiceOutput: VoiceOutput = {
       waitUntilReady: (signal) => (stage === 'voice_readiness' ? abortablePending(signal) : Promise.resolve()),
       play: ({ signal }) => (stage === 'playback' ? abortablePending(signal) : Promise.resolve()),
@@ -390,6 +437,27 @@ describe('Speech coordinator', () => {
     });
   });
 
+  it('drops already waiting jobs when the circuit opens', async () => {
+    const synthesizeSpeech = jest.fn<SynthesizeSpeech>().mockRejectedValue(new Error('delivery unavailable'));
+    const context = createTestContext({ synthesizeSpeech });
+
+    context.coordinator.start();
+    context.coordinator.enqueue(manualInput('Ошибка один.'));
+    context.coordinator.enqueue(lostInput('Ошибка два.'));
+    context.coordinator.enqueue(manualInput('Не должна ждать recovery.'));
+    await settleCoordinator();
+
+    expect(synthesizeSpeech).toHaveBeenCalledTimes(2);
+    expect(context.events).toContainEqual(
+      expect.objectContaining({
+        code: 'SPEECH_DELIVERY_FAILED',
+        speechJobId: 'speech-job-3',
+        status: 'skipped_text_only',
+        failureStage: 'admission',
+      })
+    );
+  });
+
   it('keeps text-only and schedules another probe after unavailable recovery', async () => {
     const recoverSpeechDelivery = jest
       .fn<CreateSpeechCoordinatorDependencies['recoverSpeechDelivery']>()
@@ -408,12 +476,39 @@ describe('Speech coordinator', () => {
     expect(context.scheduledTasks.filter((task) => task.delayMs === 5_000 && !task.cancelled)).toHaveLength(1);
   });
 
+  it('aborts and awaits an active recovery probe on shutdown', async () => {
+    let recoverySignal: AbortSignal | undefined;
+    const recoverSpeechDelivery = jest
+      .fn<CreateSpeechCoordinatorDependencies['recoverSpeechDelivery']>()
+      .mockImplementation((signal) => {
+        recoverySignal = signal;
+        return abortablePending(signal);
+      });
+    const synthesizeSpeech = jest.fn<SynthesizeSpeech>().mockRejectedValue(new Error('delivery unavailable'));
+    const context = createTestContext({
+      recoverSpeechDelivery,
+      synthesizeSpeech,
+    });
+
+    context.coordinator.start();
+    context.coordinator.enqueue(manualInput('Ошибка один.'));
+    context.coordinator.enqueue(lostInput('Ошибка два.'));
+    await settleCoordinator();
+    context.runScheduledTask(5_000);
+    await settleCoordinator();
+
+    await context.coordinator.stop();
+
+    expect(recoverySignal?.aborted).toBe(true);
+    expect(recoverSpeechDelivery).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts the active operation, clears waiting jobs, and stops voice on shutdown', async () => {
     let activeSignal: AbortSignal | undefined;
-    const synthesizeSpeech: SynthesizeSpeech = (input) => {
+    const synthesizeSpeech = jest.fn<SynthesizeSpeech>().mockImplementation((input) => {
       activeSignal = input.signal;
       return abortablePending(input.signal);
-    };
+    });
     const context = createTestContext({ synthesizeSpeech });
 
     context.coordinator.start();

@@ -1,0 +1,17 @@
+schema_version: 1
+
+speech:
+  enabled: true
+  voice_channel_id: '1411786395202093056'
+  tts_base_url: 'http://tts:8080'
+  recommendation_speaker: baya
+  job_ttl_ms: 20000
+  tts_timeout_ms: 7000
+  voice_ready_timeout_ms: 3000
+  playback_timeout_ms: 15000
+  consecutive_failures_before_text_only: 2
+  recovery_probe_interval_ms: 5000
+  queue_capacity: 10
+  manual:
+    enabled: true
+    max_text_characters: 300

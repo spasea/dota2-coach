@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Speech Core and Manual API RED (red-expected)`
+- Current implementation phase: `Phase 2 — Speech Core and Manual API GREEN (completed)`
 - Last updated: `2026-07-23`
 
 Status values:
@@ -1089,7 +1089,7 @@ Kubernetes directories in this vertical.
 | Milestone                                              | RED phase | GREEN phase | Status        |
 | ------------------------------------------------------ | --------- | ----------- | ------------- |
 | M0. Contract baseline                                  | —         | Phase 0     | `completed`   |
-| M1. Speech core, config, and protected manual API      | Phase 1   | Phase 2     | `not-started` |
+| M1. Speech core, config, and protected manual API      | Phase 1   | Phase 2     | `completed`   |
 | M2. Silero service and runtime TTS HTTP adapter        | Phase 3   | Phase 4     | `not-started` |
 | M3. Discord voice, Lost wiring, circuit, and lifecycle | Phase 5   | Phase 6     | `not-started` |
 | M4. ARM64/live verification and handoff                | —         | Phase 7     | `not-started` |
@@ -1194,7 +1194,7 @@ Exit criteria:
 
 ## Phase 2 — Speech Core and Manual API GREEN
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `green`
 
@@ -1214,6 +1214,33 @@ Implement:
 
 Keep the router and coordinator production wiring disabled until real TTS/voice adapters exist; no endpoint may
 accept a job that has no production consumer.
+
+Completed:
+
+- Implemented strict enabled/disabled runtime speech YAML, conditional manual credentials, safe source errors,
+  process settings, and the pure `speech.enabled => discord.enabled` compatibility invariant.
+- Implemented the immutable in-memory coordinator with one active job, a bounded waiting FIFO, TTL checks,
+  independent abortable deadlines, no retry, terminal cleanup, consecutive-failure circuit, waiting-job eviction,
+  asynchronous recovery, and bounded shutdown.
+- Implemented timing-safe dedicated Bearer authentication before a local `4_096`-byte JSON parser, strict
+  speaker/text validation, exact manual admission mappings, and asynchronous `202` projection.
+- Added the explicit `manualSpeechRouter: Router | null` `createApp` seam. Production composition passes `null`, so
+  the runtime still exposes no manual speech endpoint before real TTS/voice consumers exist.
+- Added tracked development speech configuration for voice channel `1411786395202093056`, a non-secret credentials
+  example, and verified the existing ignored `*.local.yaml` credentials convention.
+- Kept Discord text behavior, Lost behavior, TTS/voice SDKs, Compose wiring, Python service, and production speech
+  lifecycle outside Phase 2.
+
+Evidence:
+
+- Focused speech/config/manual/HTTP seam checks — `7` suites passed, `118` tests passed.
+- Complete `npm run check` — typecheck, lint, format, `57` suites / `548` tests, production build, and built-runtime
+  smoke all passed.
+- Tracked `speech.yaml` plus the credentials example parse successfully with speech/manual enabled and the pinned
+  voice-channel ID.
+- `git check-ignore --no-index ops/dev/secrets/runtime/speech-credentials.local.yaml` resolves to the existing local
+  secret ignore rule.
+- Repository plan/config formatting and `git diff --check` passed.
 
 Run:
 

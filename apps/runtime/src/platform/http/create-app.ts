@@ -1,4 +1,4 @@
-import express, { type Express } from 'express';
+import express, { type Express, type Router } from 'express';
 import type { Logger } from 'pino';
 
 import { createGsiRouter } from '../../integrations/gsi/gsi.router.js';
@@ -13,6 +13,7 @@ import { notFoundHandler } from './not-found-handler.js';
 export type CreateAppDependencies = Readonly<{
   gsiBodyLimitBytes: number;
   logger: Logger;
+  manualSpeechRouter: Router | null;
   recordClientSnapshot: RecordClientSnapshot;
   requestIdFactory: RequestIdFactory;
   trustedClientRegistry: TrustedClientRegistry;
@@ -38,6 +39,9 @@ export function createApp(dependencies: CreateAppDependencies): Express {
       trustedClientRegistry: dependencies.trustedClientRegistry,
     })
   );
+  if (dependencies.manualSpeechRouter !== null) {
+    app.use(dependencies.manualSpeechRouter);
+  }
   app.use(notFoundHandler);
   app.use(finalErrorHandler);
 

@@ -149,6 +149,7 @@ export async function createRuntime(
   const app = createApp({
     gsiBodyLimitBytes: GSI_BODY_LIMIT_BYTES,
     logger,
+    manualSpeechRouter: null,
     recordClientSnapshot: recordClientSnapshotWithDebug,
     requestIdFactory: dependencies.requestIdFactory,
     trustedClientRegistry,

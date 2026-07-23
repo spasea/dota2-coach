@@ -97,6 +97,7 @@ describe('Manual speech router', () => {
     ['blank text', { speaker: 'aidar', text: '   ' }],
     ['multiline text', { speaker: 'aidar', text: 'Первая строка\nВторая строка' }],
     ['carriage return', { speaker: 'aidar', text: 'Первая строка\rВторая строка' }],
+    ['Unicode line separator', { speaker: 'aidar', text: 'Первая строка\u2028Вторая строка' }],
     ['control character', { speaker: 'aidar', text: 'Проверка\u0000' }],
     ['more than 300 code points', { speaker: 'aidar', text: '🙂'.repeat(301) }],
   ])('maps %s to an invalid-input response', async (_caseName, body) => {
@@ -119,6 +120,21 @@ describe('Manual speech router', () => {
 
     expect(response.status).toBe(202);
     expect(enqueueSpeech).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a raw JSON body above the four KiB transport bound', async () => {
+    const { app, enqueueSpeech } = createTestContext();
+
+    const response = await postAuthorized(app).send({
+      speaker: 'aidar',
+      text: 'а'.repeat(5_000),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: { code: 'MANUAL_SPEECH_INVALID_BODY' },
+    });
+    expect(enqueueSpeech).not.toHaveBeenCalled();
   });
 
   it.each([

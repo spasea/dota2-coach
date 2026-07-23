@@ -2,7 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import type { SpeechConfigYamlSources } from './config.types.js';
 import { ConfigurationError } from './configuration-error.js';
-import { parseSpeechConfig } from './parse-speech-config.js';
+import { assertSpeechDiscordCompatibility, parseSpeechConfig } from './parse-speech-config.js';
 
 const bearerToken = 'manual.speech.secret.must-remain-private';
 const enabledConfigYaml = `
@@ -269,6 +269,43 @@ describe('Speech configuration', () => {
 
     expect(error).toMatchObject({ source: 'speech_credentials', stage: 'syntax' });
     expect(String(error)).not.toContain(bearerToken);
+  });
+
+  it('accepts enabled speech only with enabled Discord configuration', () => {
+    const speechConfiguration = parseSpeechConfig({
+      configYaml: enabledConfigYaml,
+      credentialsYaml,
+    });
+    const enabledDiscordConfiguration = Object.freeze({
+      schemaVersion: 1 as const,
+      enabled: true as const,
+      guildId: '123456789012345678',
+      textChannelId: '234567890123456789',
+      controlMessageId: '345678901234567890',
+      actionDebounceMs: 5_000,
+      botToken: 'discord-token',
+    });
+
+    expect(() => assertSpeechDiscordCompatibility(speechConfiguration, enabledDiscordConfiguration)).not.toThrow();
+
+    const error = captureConfigurationError(() =>
+      assertSpeechDiscordCompatibility(speechConfiguration, Object.freeze({ schemaVersion: 1, enabled: false }))
+    );
+
+    expect(error).toMatchObject({
+      source: 'speech_combined',
+      stage: 'validation',
+    });
+  });
+
+  it('allows disabled speech independently of Discord state', () => {
+    const speechConfiguration = parseSpeechConfig({
+      configYaml: 'schema_version: 1\nspeech:\n  enabled: false',
+    });
+
+    expect(() =>
+      assertSpeechDiscordCompatibility(speechConfiguration, Object.freeze({ schemaVersion: 1, enabled: false }))
+    ).not.toThrow();
   });
 });
 

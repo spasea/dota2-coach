@@ -1,6 +1,7 @@
 import { Writable } from 'node:stream';
 
 import { describe, expect, it, jest } from '@jest/globals';
+import { Router } from 'express';
 import pino from 'pino';
 import request from 'supertest';
 
@@ -18,7 +19,7 @@ const trustedIdentity: TrustedClientIdentity = Object.freeze({
   defaultRole: 2,
 });
 
-function createTestContext() {
+function createTestContext(manualSpeechRouter: Router | null = null) {
   let logOutput = '';
   const logDestination = new Writable({
     write(chunk: string | Buffer, _encoding, callback) {
@@ -34,6 +35,7 @@ function createTestContext() {
   const app = createApp({
     gsiBodyLimitBytes,
     logger: pino(logDestination),
+    manualSpeechRouter,
     recordClientSnapshot,
     requestIdFactory: () => 'request-01',
     trustedClientRegistry,
@@ -230,6 +232,28 @@ describe('HTTP application', () => {
     const { app } = createTestContext();
 
     const response = await request(app).get('/unknown-route');
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: { code: 'NOT_FOUND' } });
+  });
+
+  it('mounts an explicitly provided manual speech router', async () => {
+    const manualSpeechRouter = Router();
+    manualSpeechRouter.post('/internal/speech-jobs', (_request, response) => {
+      response.status(202).json({ jobId: 'speech-job-01', status: 'queued' });
+    });
+    const { app } = createTestContext(manualSpeechRouter);
+
+    const response = await request(app).post('/internal/speech-jobs');
+
+    expect(response.status).toBe(202);
+    expect(response.body).toEqual({ jobId: 'speech-job-01', status: 'queued' });
+  });
+
+  it('keeps the manual speech endpoint absent when its router seam is null', async () => {
+    const { app } = createTestContext();
+
+    const response = await request(app).post('/internal/speech-jobs');
 
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: { code: 'NOT_FOUND' } });
