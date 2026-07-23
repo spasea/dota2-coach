@@ -41,5 +41,16 @@ services:
       retries: 10
       start_period: 5s
 
+  tts-test:
+    profiles:
+      - test
+    build:
+      context: ../../
+      dockerfile: ./ops/services/tts/Dockerfile
+      target: test
+    image: ${COMPOSE_PROJECT_NAME}_tts:test
+    init: true
+    network_mode: none
+
 volumes:
   runtime_node_modules:

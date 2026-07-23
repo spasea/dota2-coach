@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 2 — Speech Core and Manual API GREEN (completed)`
+- Current implementation phase: `Phase 3 — Silero Service and TTS Client RED (in-progress)`
 - Last updated: `2026-07-23`
 
 Status values:
@@ -1302,7 +1302,7 @@ Exit criteria:
 
 ## Phase 3 — Silero Service and TTS Client RED
 
-Status: `not-started`
+Status: `in-progress`
 
 Target end state: `red-expected`
 
@@ -1370,6 +1370,38 @@ Add the container-only local verification seam:
 Add compile-safe service/client seams only. Do not add a downloadable model artifact, PyTorch, a runnable TTS
 development/runtime target, a normal-profile TTS Compose service, a listening TTS process, or runtime-to-TTS wiring
 in RED.
+
+Implemented so far:
+
+- Added the Python `3.11` src-layout package, frozen dataclass/protocol contracts, pinned `uv`/Bookworm test
+  Dockerfile stages, generated `uv.lock`, and model-free format/lint/type/test entry point.
+- Added `57` in-process/fake-driven Python contract tests for strict config, health/readiness, request/error mapping,
+  bounded PCM WAV, single-request concurrency, worker startup, timeout/crash/malformed-response/cancellation
+  replacement, kill fallback, idempotent stop, and privacy-safe failures.
+- Added the transport-neutral immutable `SpeechSynthesisError` contract and an isolated Node TTS HTTP adapter seam
+  with `20` contract tests for serialization, cancellation, no retry, stable HTTP/network mapping, correlation,
+  content type, sample rate, RIFF validation, and declared/streamed size bounds.
+- Added the profile-gated, network-isolated `tts-test` Compose service plus root `test-tts`, `test-runtime`, and
+  always-attempt-both `test` Make targets.
+- Kept the Python service and Node adapter unwired from the production runtime; no model, PyTorch, FFmpeg, listening
+  process, runtime TTS target, normal-profile TTS service, or public TTS port was added.
+
+Evidence so far:
+
+- `uv lock --check` with pinned `uv 0.11.16` — passed.
+- Diagnostic execution from a temporary pinned `uv` environment — Ruff format/lint and strict mypy passed; all
+  `57` Python tests reached only the four bounded API/config/supervisor/WAV `not implemented` seams.
+- Focused Node TTS adapter suite — expected RED: `1` suite failed / `20` tests failed at the one bounded adapter
+  seam.
+- Previous Node regression set with the new adapter spec excluded — `57` suites passed / `548` tests passed.
+- Node typecheck, lint, format check, production build, and built-runtime smoke — passed.
+- Static Compose structure verification confirms `profiles: [test]`, target `test`, `network_mode: none`, no
+  ports/volumes/healthcheck/dependencies/restart, no normal `tts` service, and no runtime dependency on TTS.
+- `make test` attempted both child targets after the first failed, then returned non-zero. The TTS child could not
+  execute because this verification environment has no Docker CLI; the runtime child reached the expected `20`
+  adapter RED assertions.
+- Docker test-image build, canonical `tts-test` run, and Docker-rendered Compose verification remain required before
+  Phase 3 can move from `in-progress` to `red-expected`.
 
 Run:
 

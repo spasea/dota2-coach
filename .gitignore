@@ -272,3 +272,11 @@ tmp
 
 # Local runtime credentials
 ops/dev/secrets/runtime/*.local.yaml
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
