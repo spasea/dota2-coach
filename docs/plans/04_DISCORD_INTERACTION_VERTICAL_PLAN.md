@@ -2,10 +2,10 @@
 
 ## Status
 
-- Plan status: `in-progress`
+- Plan status: `completed`
 - Issue: not assigned
-- Current implementation phase: `Phase 5 — Runtime Lifecycle RED (red-expected)`
-- Last updated: `2026-07-22`
+- Current implementation phase: `Phase 7 — Verification and Handoff (completed)`
+- Last updated: `2026-07-23`
 
 Status values:
 
@@ -773,13 +773,13 @@ Do not create empty future `voice`, `tts`, `buy`, command-wide, or generic lifec
 
 ## Milestone Status
 
-| Milestone                                                     | RED phase | GREEN phase | Status        |
-| ------------------------------------------------------------- | --------- | ----------- | ------------- |
-| M0. Contract baseline                                         | —         | Phase 0     | `completed`   |
-| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed`   |
-| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed`   |
-| M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `in-progress` |
-| M4. Verification and handoff                                  | —         | Phase 7     | `not-started` |
+| Milestone                                                     | RED phase | GREEN phase | Status      |
+| ------------------------------------------------------------- | --------- | ----------- | ----------- |
+| M0. Contract baseline                                         | —         | Phase 0     | `completed` |
+| M1. Configuration and explicit panel provisioning             | Phase 1   | Phase 2     | `completed` |
+| M2. Interaction routing, debounce, localization, and delivery | Phase 3   | Phase 4     | `completed` |
+| M3. Discord Gateway and HTTP runtime lifecycle                | Phase 5   | Phase 6     | `completed` |
+| M4. Verification and handoff                                  | —         | Phase 7     | `completed` |
 
 ## Phase 0 — Contract Baseline
 
@@ -1259,7 +1259,7 @@ Exit criteria:
 
 ## Phase 6 — Runtime Lifecycle GREEN
 
-Status: `in-progress`
+Status: `completed`
 
 Target end state: `completed`
 
@@ -1300,7 +1300,7 @@ Verification:
 - Docker/Compose config rendering and health smoke in normal disabled mode;
 - `git diff --check` and module-boundary inspection.
 
-Verification evidence (`2026-07-22`):
+Verification evidence (`2026-07-22` and `2026-07-23`):
 
 - `npm run check` — passed, including typecheck, ESLint, Prettier, `51` Jest suites / `449` tests, ESM build, and the
   built-runtime disabled-Discord health/authenticated-GSI smoke;
@@ -1309,8 +1309,12 @@ Verification evidence (`2026-07-22`):
 - refreshed code graph confirms production composition reaches the existing Discord application/panel capabilities,
   `discord.js` imports remain limited to the two Discord infrastructure adapters, and no production `not implemented`
   seam remains;
-- Docker CLI is not installed in the current environment, so actual Compose rendering and the Compose health smoke
-  remain pending. Phase 6 and M3 stay `in-progress` until that evidence is recorded.
+- the operator built and ran the committed Docker/Compose topology with its clean `npm ci` image stages; the resulting
+  runtime container remained healthy with the expected `3000` port mapping;
+- real one-shot provisioning created and pinned the canonical panel, emitted its control-message ID, cleaned up, and
+  exited before normal serving; enabled normal mode then reused the configured panel and reached `RUNTIME_STARTED`;
+- operator-captured normal-mode logs contained `18_135` successful authenticated `/gsi` requests from two configured
+  clients, no HTTP `5xx`, and no fatal runtime record, completing the pending container/Compose evidence.
 
 Exit criteria:
 
@@ -1321,7 +1325,7 @@ Exit criteria:
 
 ## Phase 7 — Verification and Handoff
 
-Status: `not-started`
+Status: `completed`
 
 Target end state: `completed`
 
@@ -1333,27 +1337,60 @@ Run repository and container verification:
 - module-boundary and log-privacy inspection;
 - no focused, skipped, intentional RED, or production `not implemented` seam.
 
-Run an operator-controlled Discord smoke test:
+Run an operator-controlled Discord smoke test, combining live evidence for production wiring with deterministic specs
+for boundaries that are unreliable or artificial to reproduce manually:
 
-1. Configure a test bot/guild/text channel with the minimum required permissions.
-2. Run `DISCORD_CREATE_PANEL=true` and verify no HTTP port binds.
-3. Verify one pinned canonical panel, one structured ID log, Discord client cleanup, and process exit code `0`.
-4. Copy the ID into public config, set provisioning false, and start normal mode.
-5. Verify normal mode reuses and does not mutate the panel.
-6. Click disabled Buy and verify an ephemeral response with no engine call.
-7. Click each role with and without a fresh active match; verify requester-only match-scoped behavior.
-8. Click `I'm lost` with an unmapped user, missing/stale data, and a valid requester.
-9. Verify valid Lost publishes one public configured-channel message and one ephemeral confirmation.
-10. Verify alias, effective role, score, confidence, coverage, reasons/penalties, alternative, unknowns, and guardrails.
-11. Double-click within `5_000 ms` and at the exact boundary; verify only the accepted requests score/publish.
-12. Click from a copied message/other channel and verify no Match/Lost invocation.
-13. Restart normal mode and verify no new panel is created.
-14. Stop the process and verify HTTP plus Discord cleanup without an unhandled rejection.
+1. Configure a test bot/guild/text channel with the minimum required permissions — verified live.
+2. Run `DISCORD_CREATE_PANEL=true` and verify no HTTP port binds — verified live and by process-mode specs.
+3. Verify one pinned canonical panel, one structured ID log, Discord client cleanup, and process exit code `0` —
+   verified live.
+4. Copy the ID into public config, set provisioning false, and start normal mode — verified live.
+5. Verify normal mode reuses and does not mutate the panel — verified across normal startup and restart.
+6. Verify Buy is rendered disabled and its defensive routing path performs no engine call — verified live for the
+   disabled component and deterministically for routing.
+7. Verify requester-only match-scoped role behavior — successful and unavailable paths were verified live; all five
+   role values, identity isolation, and idempotence were verified deterministically.
+8. Verify `I'm lost` for missing/stale data and valid mapped requesters live; verify unmapped identity
+   deterministically without adding an artificial guild member.
+9. Verify valid Lost publishes one public configured-channel message and one ephemeral confirmation — verified live
+   for both connected clients.
+10. Verify alias, effective role, score, confidence, coverage, reasons/penalties, alternative, unknowns, and
+    guardrails — verified in live Discord output and typed presentation specs.
+11. Verify the half-open `5_000 ms` debounce, duplicate response, and single scoring/publication behavior
+    deterministically. No synthetic active-match `/gsi` state is injected solely to repeat this clock-sensitive test.
+12. Verify copied-message/other-channel source rejection deterministically without creating an extra live panel.
+13. Restart normal mode and verify no new panel is created — verified by the clean watcher restart sequence.
+14. Stop the process and verify HTTP plus Discord cleanup without an unhandled rejection — verified by
+    `RUNTIME_STOPPED` followed by a clean restart.
+
+Verification evidence (`2026-07-23`):
+
+- focused debounce and Discord-button verification passed: `2` suites / `29` tests, including duplicate suppression,
+  exact-window behavior, no repeated Lost invocation/publication, source rejection, all role values, and disabled Buy;
+- one running Compose service accepted `9_776` successful GSI requests from `client-01` and `8_359` from `client-02`;
+  their average observed intervals were approximately `1.14 s` and `1.21 s`, and `/gsi` processing p95 was
+  approximately `26 ms`;
+- live Discord produced `22` successful Lost deliveries (`19` for `client-01`, `3` for `client-02`) and `3` successful
+  role updates across four observed match lifecycles;
+- coverage changed from `1/5` to `2/5` when the second client became usable; both requesters received recommendations
+  in the same match, including `FARM_SAFELY`, `DEFEND`, `REGROUP`, `RESET`, and `HOLD_AND_WAIT` outcomes;
+- every recorded Lost decision in the captured session reached `DISCORD_LOST_DELIVERED`; the observed interval from
+  decision record to delivery record was `249–1_916 ms`;
+- laptop sleep produced expected Gateway reconnect observations. Earlier reconnects resumed explicitly, and a
+  post-wake `DISCORD_LOST_UNAVAILABLE` preflight response proved that interaction intake recovered;
+- the captured runtime had no HTTP `5xx`, level `50+` record, unhandled rejection, token, Discord user ID, alias, raw
+  payload, or recommendation text in structured logs;
+- a transient pre-restart development print exposed only the validated private-document shape with nested values
+  collapsed as `[Object]`; the current source no longer contains that print, and the raw operator artifact remains
+  under the ignored `tmp/` path;
+- the remote third-client Windows/Cloudflare TLS interoperability issue remains a separate operational follow-up. It
+  does not invalidate the completed one-to-five-client contract or the successful two-client MVP smoke.
 
 Exit criteria:
 
 - M4 is `completed`.
-- All repository-local, container, provisioning, and live Discord checks pass.
+- All required behavior is evidenced by repository tests, container verification, and the assigned live Discord
+  checks above.
 - The plan status becomes `completed` only after actual evidence is recorded.
 - TTS/voice and Buy remain explicitly deferred with no placeholder implementation.
 
