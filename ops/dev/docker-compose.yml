@@ -41,6 +41,30 @@ services:
       retries: 10
       start_period: 5s
 
+  tts:
+    build:
+      context: ../../
+      dockerfile: ./ops/services/tts/Dockerfile
+      target: development
+    image: ${COMPOSE_PROJECT_NAME}_tts:dev
+    command: python -m tts_service.main
+    init: true
+    restart: unless-stopped
+    environment:
+      TTS_CONFIG_PATH: /etc/dota2-coach/tts.yaml
+    expose:
+      - '8080'
+    volumes:
+      - ../../apps/tts:/app
+      - ./config/tts/tts.yaml:/etc/dota2-coach/tts.yaml:ro
+    healthcheck:
+      test: >-
+        python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 60s
+
   tts-test:
     profiles:
       - test

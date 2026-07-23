@@ -153,6 +153,25 @@ describe('TTS HTTP adapter', () => {
     expect(fixture.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('never allows callers to raise the fixed four-megabyte service bound', async () => {
+    const response = successResponse();
+    response.headers.set('content-length', String(4_194_304 + 1));
+    const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response);
+    const synthesizeSpeech = createTtsHttpAdapter(
+      { ...defaultOptions, maxAudioBytes: Number.MAX_SAFE_INTEGER },
+      { fetch }
+    );
+
+    await expect(synthesizeSpeech(request)).rejects.toEqual(
+      new SpeechSynthesisError({
+        stage: 'tts_protocol',
+        timedOut: false,
+        reason: 'protocol',
+      })
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('treats an unknown status or malformed error envelope as a protocol failure without retrying', async () => {
     const fixture = createFixture(
       new Response(JSON.stringify({ detail: 'raw upstream detail' }), {

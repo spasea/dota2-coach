@@ -1,0 +1,10 @@
+schema_version: 1
+tts:
+  model_id: v5_5_ru
+  model_path: /opt/dota2-coach/models/v5_5_ru.pt
+  device: cpu
+  sample_rate_hz: 48000
+  synthesis_timeout_ms: 6500
+  max_text_characters: 300
+  host: 0.0.0.0
+  port: 8080

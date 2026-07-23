@@ -6,6 +6,7 @@ import pytest
 
 from tts_service.contracts import SpeechRequest, SynthesisResult, TtsServiceError
 from tts_service.inference_supervisor import (
+    InferenceSupervisor,
     InferenceSupervisorOptions,
     InferenceWorker,
     create_inference_supervisor,
@@ -20,11 +21,13 @@ class FakeWorker(InferenceWorker):
         synthesize_error: Exception | None = None,
         join_result: bool = True,
         blocked: bool = False,
+        start_blocked: bool = False,
     ) -> None:
         self.result = result or SynthesisResult(request_id="request-1", wav_bytes=b"RIFF")
         self.synthesize_error = synthesize_error
         self.join_result = join_result
         self.blocked = blocked
+        self.start_blocked = start_blocked
         self.started = 0
         self.terminated = 0
         self.joined = 0
@@ -34,9 +37,14 @@ class FakeWorker(InferenceWorker):
         self.timeouts: list[int] = []
         self.synthesis_started = asyncio.Event()
         self.release_synthesis = asyncio.Event()
+        self.start_started = asyncio.Event()
+        self.release_start = asyncio.Event()
 
     async def start(self) -> None:
         self.started += 1
+        self.start_started.set()
+        if self.start_blocked:
+            await self.release_start.wait()
 
     async def synthesize(self, request: SpeechRequest, timeout_ms: int) -> SynthesisResult:
         self.requests.append(request)
@@ -122,7 +130,7 @@ async def test_only_one_synthesis_can_run_at_a_time() -> None:
 @pytest.mark.asyncio
 async def test_timeout_replaces_worker_and_returns_stable_error() -> None:
     timed_out_worker = FakeWorker(blocked=True)
-    replacement = FakeWorker()
+    replacement = FakeWorker(start_blocked=True)
     supervisor = create_inference_supervisor(options(), WorkerFactory([timed_out_worker, replacement]))
     await supervisor.start()
 
@@ -133,14 +141,19 @@ async def test_timeout_replaces_worker_and_returns_stable_error() -> None:
     assert timed_out_worker.terminated == 1
     assert timed_out_worker.joined == 1
     assert timed_out_worker.closed == 1
+    assert not supervisor.ready
+    await replacement.start_started.wait()
     assert replacement.started == 1
+    assert not supervisor.ready
+    replacement.release_start.set()
+    await wait_until_ready(supervisor)
     assert supervisor.ready
 
 
 @pytest.mark.asyncio
 async def test_crashed_worker_is_replaced_and_failure_is_normalized() -> None:
     crashed_worker = FakeWorker(synthesize_error=RuntimeError("model internals"))
-    replacement = FakeWorker()
+    replacement = FakeWorker(start_blocked=True)
     supervisor = create_inference_supervisor(options(), WorkerFactory([crashed_worker, replacement]))
     await supervisor.start()
 
@@ -150,13 +163,17 @@ async def test_crashed_worker_is_replaced_and_failure_is_normalized() -> None:
     assert error.value.code == "SYNTHESIS_FAILED"
     assert "model internals" not in str(error.value)
     assert crashed_worker.closed == 1
+    assert not supervisor.ready
+    await replacement.start_started.wait()
     assert replacement.started == 1
+    replacement.release_start.set()
+    await wait_until_ready(supervisor)
 
 
 @pytest.mark.asyncio
 async def test_malformed_worker_response_is_discarded_and_worker_is_replaced() -> None:
     malformed_worker = FakeWorker(result=SynthesisResult(request_id="stale-request", wav_bytes=b"RIFF"))
-    replacement = FakeWorker()
+    replacement = FakeWorker(start_blocked=True)
     supervisor = create_inference_supervisor(options(), WorkerFactory([malformed_worker, replacement]))
     await supervisor.start()
 
@@ -167,7 +184,12 @@ async def test_malformed_worker_response_is_discarded_and_worker_is_replaced() -
     assert malformed_worker.terminated == 1
     assert malformed_worker.joined == 1
     assert malformed_worker.closed == 1
+    assert not supervisor.ready
+    await replacement.start_started.wait()
     assert replacement.started == 1
+    assert not supervisor.ready
+    replacement.release_start.set()
+    await wait_until_ready(supervisor)
     assert supervisor.ready
 
 
@@ -189,7 +211,7 @@ async def test_shutdown_uses_kill_when_worker_does_not_join() -> None:
 @pytest.mark.asyncio
 async def test_cancellation_discards_worker_before_next_request() -> None:
     cancelled_worker = FakeWorker(blocked=True)
-    replacement = FakeWorker()
+    replacement = FakeWorker(start_blocked=True)
     supervisor = create_inference_supervisor(
         options(timeout_ms=1_000),
         WorkerFactory([cancelled_worker, replacement]),
@@ -205,7 +227,11 @@ async def test_cancellation_discards_worker_before_next_request() -> None:
 
     assert cancelled_worker.terminated == 1
     assert cancelled_worker.closed == 1
+    assert not supervisor.ready
+    await replacement.start_started.wait()
     assert replacement.started == 1
+    replacement.release_start.set()
+    await wait_until_ready(supervisor)
     assert await supervisor.synthesize(speech_request("next")) == replacement.result
 
 
@@ -221,3 +247,11 @@ async def test_stop_is_idempotent_and_clears_readiness() -> None:
     assert not supervisor.ready
     assert worker.terminated == 1
     assert worker.closed == 1
+
+
+async def wait_until_ready(supervisor: InferenceSupervisor) -> None:
+    for _ in range(100):
+        if supervisor.ready:
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("supervisor did not become ready")

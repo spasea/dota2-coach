@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 3 — Silero Service and TTS Client RED (in-progress)`
+- Current implementation phase: `Phase 4 — Silero Service and TTS Client GREEN (in-progress)`
 - Last updated: `2026-07-23`
 
 Status values:
@@ -301,8 +301,8 @@ constraints. All other completed Discord contracts remain in force.
      `SPEECH_CONFIG_PATH` and `SPEECH_CREDENTIALS_PATH`.
 130. The Python service uses its own versioned public YAML document selected by `TTS_CONFIG_PATH`.
 131. TTS public configuration owns:
-     model ID, model artifact path/checksum expectation, device, sample rate, synthesis timeout, and HTTP bind
-     settings.
+     model ID, model artifact path, device, sample rate, synthesis timeout, and HTTP bind settings. The artifact
+     checksum and size are fixed in service/build code rather than operator YAML.
 132. There are no TTS service secrets in this vertical.
 133. All YAML is strict: duplicate keys, unknown fields, unsupported versions, invalid URLs, invalid speaker values,
      invalid limits, malformed snowflakes, and non-finite/unsafe durations fail parsing.
@@ -1088,7 +1088,8 @@ apps/
     ├── README.md
     ├── THIRD_PARTY_NOTICES.md
     ├── scripts/
-    │   └── check.sh
+    │   ├── check.sh
+    │   └── smoke.py
     ├── src/
     │   └── tts_service/
     │       ├── __init__.py
@@ -1096,6 +1097,7 @@ apps/
     │       ├── config.py
     │       ├── contracts.py
     │       ├── inference_supervisor.py
+    │       ├── inference_worker.py
     │       ├── main.py
     │       ├── silero_engine.py
     │       └── wav.py
@@ -1103,6 +1105,9 @@ apps/
         ├── test_api.py
         ├── test_config.py
         ├── test_inference_supervisor.py
+        ├── test_inference_worker.py
+        ├── test_main.py
+        ├── test_silero_engine.py
         └── test_wav.py
 
 ops/
@@ -1133,7 +1138,7 @@ Kubernetes directories in this vertical.
 | ------------------------------------------------------ | --------- | ----------- | ------------- |
 | M0. Contract baseline                                  | —         | Phase 0     | `completed`   |
 | M1. Speech core, config, and protected manual API      | Phase 1   | Phase 2     | `completed`   |
-| M2. Silero service and runtime TTS HTTP adapter        | Phase 3   | Phase 4     | `not-started` |
+| M2. Silero service and runtime TTS HTTP adapter        | Phase 3   | Phase 4     | `in-progress` |
 | M3. Discord voice, Lost wiring, circuit, and lifecycle | Phase 5   | Phase 6     | `not-started` |
 | M4. ARM64/live verification and handoff                | —         | Phase 7     | `not-started` |
 
@@ -1302,7 +1307,7 @@ Exit criteria:
 
 ## Phase 3 — Silero Service and TTS Client RED
 
-Status: `in-progress`
+Status: `red-expected`
 
 Target end state: `red-expected`
 
@@ -1386,7 +1391,7 @@ Implemented so far:
 - Kept the Python service and Node adapter unwired from the production runtime; no model, PyTorch, FFmpeg, listening
   process, runtime TTS target, normal-profile TTS service, or public TTS port was added.
 
-Evidence so far:
+Evidence:
 
 - `uv lock --check` with pinned `uv 0.11.16` — passed.
 - Diagnostic execution from a temporary pinned `uv` environment — Ruff format/lint and strict mypy passed; all
@@ -1397,11 +1402,12 @@ Evidence so far:
 - Node typecheck, lint, format check, production build, and built-runtime smoke — passed.
 - Static Compose structure verification confirms `profiles: [test]`, target `test`, `network_mode: none`, no
   ports/volumes/healthcheck/dependencies/restart, no normal `tts` service, and no runtime dependency on TTS.
-- `make test` attempted both child targets after the first failed, then returned non-zero. The TTS child could not
-  execute because this verification environment has no Docker CLI; the runtime child reached the expected `20`
-  adapter RED assertions.
-- Docker test-image build, canonical `tts-test` run, and Docker-rendered Compose verification remain required before
-  Phase 3 can move from `in-progress` to `red-expected`.
+- Operator Docker evidence: the canonical Compose command built the pinned Python `3.11.15` test image from
+  `uv.lock`; Ruff format/lint and strict mypy passed before pytest reached `57` expected RED assertions at the four
+  bounded Python seams.
+- Operator aggregate `make test` evidence: the TTS child returned the expected `57` Python RED assertions, the
+  runtime child still ran and returned the expected `20` adapter RED assertions with `57` prior suites /
+  `548` prior tests green, and the aggregate returned non-zero.
 
 Run:
 
@@ -1434,9 +1440,25 @@ Exit criteria:
 
 ## Phase 4 — Silero Service and TTS Client GREEN
 
-Status: `not-started`
+Status: `in-progress`
 
 Target end state: `green`
+
+Approved Phase 4 implementation decisions:
+
+- use `multiprocessing` with the `spawn` context and one duplex Pipe; only the inference subprocess owns
+  PyTorch/model state;
+- return a bounded timeout/crash/cancellation error without waiting for worker replacement; clear readiness and
+  warm the replacement in the background;
+- pin `torch==2.12.0+cpu` through the explicit official CPU wheel index while keeping PyTorch out of the deterministic
+  `test` target;
+- pin `v5_5_ru.pt` at `145420684` bytes with SHA-256
+  `50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437`;
+- keep the model checksum in Docker/service code rather than operator YAML and verify it during image build and
+  service startup;
+- bound completed WAV responses at `4194304` bytes in both the service and Node adapter;
+- use the Compose `development` target with a source bind mount but without Uvicorn reload; keep runtime startup
+  independent from TTS readiness and do not add a runtime dependency on TTS.
 
 Implement:
 
@@ -1459,6 +1481,34 @@ Implement:
 
 The normal deterministic Python suite uses fake model engines. A separately marked integration smoke exercises the
 real pinned model.
+
+Implemented so far:
+
+- Implemented strict bounded config parsing, HTTP validation/error mapping, PCM16 mono WAV encoding, readiness,
+  concurrency gating, timeout/crash/cancellation cleanup, and background worker replacement.
+- Added the `spawn`/duplex-Pipe inference worker. Only its child entry point loads and warms the verified standalone
+  Silero package; the HTTP supervisor imports no PyTorch.
+- Added deterministic fake-engine/child-loop/lifecycle coverage and a separate standard-library real-model smoke for
+  `baya` plus alternate speaker `aidar`.
+- Implemented the unwired runtime TTS HTTP adapter with one attempt, forwarded cancellation, bounded streaming,
+  strict response correlation, fixed 48 kHz WAV validation, and stable synthesis/protocol failures.
+- Added the pinned CPU-only runtime dependency declaration, model checksum/size build stage, development/runtime
+  image targets, tracked TTS config, private Compose service, readiness healthcheck, attribution notice, and
+  container-only `make lock-tts` / `make smoke-tts` workflows.
+- Kept the deterministic `test` image model-free and kept runtime startup independent from TTS; the production
+  runtime still has no TTS adapter wiring before Phase 6.
+
+Current evidence:
+
+- Complete Node `npm run check` passed: typecheck, lint, format, `58` suites / `569` tests, production build, and
+  built-runtime smoke.
+- Offline Python behavior checks passed for strict/duplicate-key config, PCM WAV, checksum verification, and
+  supervisor start/synthesize/stop; all Python source/tests/scripts compile.
+- Offline Compose checks confirm the `development` target, private `expose` without host `ports`, no runtime/TTS
+  `depends_on`, and the unchanged profile-gated networkless `tts-test`.
+- Repository `git diff --check` passed.
+- `uv.lock`, containerized Python checks, model/image downloads, local/ARM64 builds, and real-model smoke remain
+  operator verification because this implementation environment is intentionally not downloading those artifacts.
 
 Run:
 

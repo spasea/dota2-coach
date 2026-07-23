@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Final, Literal, TypeAlias
 
-TtsSpeaker: TypeAlias = Literal["aidar", "baya", "kseniya", "xenia", "eugene"]
+TtsSpeaker: TypeAlias = Literal["aidar", "baya", "kseniya", "eugene", "xenia"]
 TtsErrorCode: TypeAlias = Literal[
     "INVALID_REQUEST",
     "TEXT_TOO_LONG",
@@ -13,10 +13,19 @@ TtsErrorCode: TypeAlias = Literal[
     "SYNTHESIS_FAILED",
 ]
 
-SUPPORTED_SPEAKERS: tuple[TtsSpeaker, ...] = ("aidar", "baya", "kseniya", "xenia", "eugene")
-MODEL_ID = "v5_5_ru"
-DEVICE = "cpu"
-SAMPLE_RATE_HZ = 48_000
+SUPPORTED_SPEAKERS: tuple[TtsSpeaker, ...] = ("aidar", "baya", "kseniya", "eugene", "xenia")
+MODEL_ID: Final = "v5_5_ru"
+MODEL_PATH: Final = Path("/opt/dota2-coach/models/v5_5_ru.pt")
+MODEL_SIZE_BYTES: Final = 145_420_684
+MODEL_SHA256: Final = "50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437"
+DEVICE: Final = "cpu"
+SAMPLE_RATE_HZ: Final = 48_000
+SYNTHESIS_TIMEOUT_MS: Final = 6_500
+MAX_TEXT_CHARACTERS: Final = 300
+HOST: Final = "0.0.0.0"
+PORT: Final = 8_080
+MAX_WAV_BYTES: Final = 4_194_304
+MAX_REQUEST_BODY_BYTES: Final = 4_096
 
 
 @dataclass(frozen=True, slots=True)
