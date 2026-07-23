@@ -1,3 +1,5 @@
+import type { SpeechSpeaker } from '../../modules/speech/public.js';
+
 export type ClientRole = 1 | 2 | 3 | 4 | 5;
 
 export type TrustedClientIdentity = Readonly<{
@@ -42,4 +44,40 @@ export type DiscordConfiguration =
       controlMessageId: string | null;
       actionDebounceMs: number;
       botToken: string;
+    }>;
+
+export type SpeechConfigYamlSources = Readonly<{
+  configYaml: string;
+  credentialsYaml?: string;
+}>;
+
+type SpeechManualConfiguration =
+  | Readonly<{
+      enabled: false;
+    }>
+  | Readonly<{
+      enabled: true;
+      maxTextCharacters: 300;
+      bearerToken: string;
+    }>;
+
+export type SpeechConfiguration =
+  | Readonly<{
+      schemaVersion: 1;
+      enabled: false;
+    }>
+  | Readonly<{
+      schemaVersion: 1;
+      enabled: true;
+      voiceChannelId: string;
+      ttsBaseUrl: string;
+      recommendationSpeaker: SpeechSpeaker;
+      jobTtlMs: number;
+      ttsTimeoutMs: number;
+      voiceReadyTimeoutMs: number;
+      playbackTimeoutMs: number;
+      consecutiveFailuresBeforeTextOnly: number;
+      recoveryProbeIntervalMs: number;
+      queueCapacity: number;
+      manual: SpeechManualConfiguration;
     }>;

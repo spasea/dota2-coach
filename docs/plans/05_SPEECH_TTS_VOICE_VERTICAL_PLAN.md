@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 1 — Speech Core and Manual API RED (not-started)`
+- Current implementation phase: `Phase 1 — Speech Core and Manual API RED (red-expected)`
 - Last updated: `2026-07-23`
 
 Status values:
@@ -1129,7 +1129,7 @@ Exit criteria:
 
 ## Phase 1 — Speech Core and Manual API RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
 
@@ -1153,6 +1153,29 @@ Add compile-safe SDK-free contracts and intentional RED specs for:
 - deterministic injected clock/ID/timer seams.
 
 Production seams may throw one bounded `not implemented` error and must not be wired into the serving application.
+
+Completed:
+
+- Added SDK-free immutable speech speaker/source/job/status/audio/admission contracts and public exports.
+- Added coordinator ports for synthesis, voice output, combined recovery, injected monotonic time, IDs, scheduling,
+  and privacy-safe events.
+- Added compile-safe bounded stubs for runtime speech config parsing/loading/process settings, the coordinator,
+  manual Bearer authentication, and the isolated manual router.
+- Added six intent-driven spec suites with `87` tests covering config/credential strictness, FIFO/capacity/TTL,
+  independent deadlines, cleanup/no-retry, circuit recovery, protected manual validation/mappings, and absence of a
+  status API.
+- Kept all seams disconnected from `createApp`, bootstrap, Discord, TTS, Compose, and runtime lifecycle.
+
+Evidence:
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run format:check` — passed.
+- Focused Phase 1 specs — expected RED: `6` suites failed, `87` tests failed, all at the six bounded
+  `not implemented` seams.
+- Existing regression suite with Phase 1 specs excluded — `51` suites passed, `451` tests passed.
+- Complete Node suite — expected RED only: `6` Phase 1 suites failed / `51` existing suites passed;
+  `87` Phase 1 tests failed / `451` existing tests passed.
 
 Run:
 

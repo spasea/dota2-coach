@@ -6,7 +6,10 @@ export type ConfigurationSource =
   | 'lost_policy'
   | 'discord'
   | 'discord_credentials'
-  | 'discord_combined';
+  | 'discord_combined'
+  | 'speech'
+  | 'speech_credentials'
+  | 'speech_combined';
 export type ConfigurationStage = 'source' | 'syntax' | 'validation';
 
 type ConfigurationErrorContext = Readonly<{
