@@ -14,13 +14,8 @@ test-tts:
 	$(COMPOSE) run --rm --build tts-test
 
 lock-tts:
-	docker run --rm \
-		--user "$$(id -u):$$(id -g)" \
-		--env UV_CACHE_DIR=/tmp/uv-cache \
-		--volume "$(CURDIR)/apps/tts:/app" \
-		--workdir /app \
-		ghcr.io/astral-sh/uv:0.11.16 \
-		/uv lock
+	LOCAL_UID="$$(id -u)" LOCAL_GID="$$(id -g)" \
+		$(COMPOSE) run --rm --build tts-lock
 
 smoke-tts:
 	$(COMPOSE) exec tts python scripts/smoke.py

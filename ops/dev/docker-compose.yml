@@ -76,5 +76,20 @@ services:
     init: true
     network_mode: none
 
+  tts-lock:
+    profiles:
+      - tools
+    build:
+      context: ../../
+      dockerfile: ./ops/services/tts/Dockerfile
+      target: base
+    image: ${COMPOSE_PROJECT_NAME}_tts:base
+    command: uv lock
+    user: '${LOCAL_UID:-1000}:${LOCAL_GID:-1000}'
+    environment:
+      UV_CACHE_DIR: /app/.cache/uv
+    volumes:
+      - ../../apps/tts:/app
+
 volumes:
   runtime_node_modules:
