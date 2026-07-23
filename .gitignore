@@ -273,6 +273,9 @@ tmp
 # Local runtime credentials
 ops/dev/secrets/runtime/*.local.yaml
 
+# Local model artifacts
+.artifacts/
+
 # Python
 .venv/
 __pycache__/

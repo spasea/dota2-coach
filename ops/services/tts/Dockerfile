@@ -36,13 +36,11 @@ CMD ["sh", "scripts/check.sh"]
 
 FROM python-base AS model
 
-RUN mkdir -p /opt/dota2-coach/models
+COPY --chmod=0444 .artifacts/tts/v5_5_ru.pt /opt/dota2-coach/models/v5_5_ru.pt
 
-ADD --checksum=sha256:50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437 \
-    https://models.silero.ai/models/tts/ru/v5_5_ru.pt \
-    /opt/dota2-coach/models/v5_5_ru.pt
-
-RUN test "$(stat -c '%s' /opt/dota2-coach/models/v5_5_ru.pt)" = "145420684"
+RUN test "$(wc -c < /opt/dota2-coach/models/v5_5_ru.pt)" = "145420684" \
+    && echo "50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437  /opt/dota2-coach/models/v5_5_ru.pt" \
+        | sha256sum --check --strict -
 
 FROM base AS runtime-dependencies
 

@@ -28,7 +28,8 @@ class SileroEngine(Protocol):
 
 
 class SileroModel(Protocol):
-    speakers: Sequence[str]
+    @property
+    def speakers(self) -> Sequence[str]: ...
 
     def to(self, device: str) -> object: ...
 

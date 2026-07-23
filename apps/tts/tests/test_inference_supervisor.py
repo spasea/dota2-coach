@@ -23,7 +23,7 @@ class FakeWorker(InferenceWorker):
         blocked: bool = False,
         start_blocked: bool = False,
     ) -> None:
-        self.result = result or SynthesisResult(request_id="request-1", wav_bytes=b"RIFF")
+        self.result = result
         self.synthesize_error = synthesize_error
         self.join_result = join_result
         self.blocked = blocked
@@ -54,7 +54,9 @@ class FakeWorker(InferenceWorker):
             await self.release_synthesis.wait()
         if self.synthesize_error is not None:
             raise self.synthesize_error
-        return self.result
+        if self.result is not None:
+            return self.result
+        return SynthesisResult(request_id=request.request_id, wav_bytes=b"RIFF")
 
     def terminate(self) -> None:
         self.terminated += 1
@@ -122,7 +124,7 @@ async def test_only_one_synthesis_can_run_at_a_time() -> None:
 
     assert error.value.code == "BUSY"
     worker.release_synthesis.set()
-    assert await first_request == worker.result
+    assert await first_request == SynthesisResult(request_id="first", wav_bytes=b"RIFF")
     assert worker.timeouts == [1_000]
     assert supervisor.ready
 
@@ -232,7 +234,10 @@ async def test_cancellation_discards_worker_before_next_request() -> None:
     assert replacement.started == 1
     replacement.release_start.set()
     await wait_until_ready(supervisor)
-    assert await supervisor.synthesize(speech_request("next")) == replacement.result
+    assert await supervisor.synthesize(speech_request("next")) == SynthesisResult(
+        request_id="next",
+        wav_bytes=b"RIFF",
+    )
 
 
 @pytest.mark.asyncio

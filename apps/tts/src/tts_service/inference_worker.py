@@ -5,7 +5,7 @@ import multiprocessing
 from contextlib import suppress
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
-from multiprocessing.context import BaseContext
+from multiprocessing.context import SpawnContext
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 
@@ -38,7 +38,7 @@ class SpawnedInferenceWorker:
         model_path: Path,
         max_wav_bytes: int,
         *,
-        context: BaseContext | None = None,
+        context: SpawnContext | None = None,
     ) -> None:
         process_context = context or multiprocessing.get_context("spawn")
         parent_connection, child_connection = process_context.Pipe(duplex=True)

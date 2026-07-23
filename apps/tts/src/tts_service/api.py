@@ -1,6 +1,6 @@
 import json
 from collections.abc import Callable, Mapping
-from typing import Protocol, cast
+from typing import Protocol
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -14,7 +14,6 @@ from .contracts import (
     SynthesisResult,
     TtsConfiguration,
     TtsServiceError,
-    TtsSpeaker,
 )
 
 TtsEventRecorder = Callable[[Mapping[str, object]], None]
@@ -144,7 +143,7 @@ async def _parse_request(request: Request, max_text_characters: int) -> SpeechRe
 
     return SpeechRequest(
         request_id=request_id,
-        speaker=cast(TtsSpeaker, speaker),
+        speaker=speaker,
         text=text,
     )
 

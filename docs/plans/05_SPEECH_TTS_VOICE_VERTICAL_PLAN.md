@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 4 — Silero Service and TTS Client GREEN (in-progress)`
+- Current implementation phase: `Phase 4 — Silero Service and TTS Client GREEN (completed)`
 - Last updated: `2026-07-23`
 
 Status values:
@@ -125,7 +125,8 @@ constraints. All other completed Discord contracts remain in force.
     `aidar`, `baya`, `kseniya`, `xenia`, and `eugene`.
 22. Runtime callers may select only a supported speaker. They may not select a model, model URL, artifact path,
     device, sample rate, or arbitrary provider option.
-23. The Silero model artifact is pinned by URL/version and SHA-256 checksum during image construction.
+23. The Silero model artifact is pinned by official source URL/version and SHA-256 checksum. It is supplied as an
+    untracked local build input and its checksum and size are verified during image construction.
 24. Runtime model downloads, `torch.hub` repository execution, and first-request downloads are forbidden.
 25. The model is loaded and warmed before the TTS service reports ready.
 26. The TTS image carries the required Silero attribution and main model license notice. Model weights remain under
@@ -1138,7 +1139,7 @@ Kubernetes directories in this vertical.
 | ------------------------------------------------------ | --------- | ----------- | ------------- |
 | M0. Contract baseline                                  | —         | Phase 0     | `completed`   |
 | M1. Speech core, config, and protected manual API      | Phase 1   | Phase 2     | `completed`   |
-| M2. Silero service and runtime TTS HTTP adapter        | Phase 3   | Phase 4     | `in-progress` |
+| M2. Silero service and runtime TTS HTTP adapter        | Phase 3   | Phase 4     | `completed`   |
 | M3. Discord voice, Lost wiring, circuit, and lifecycle | Phase 5   | Phase 6     | `not-started` |
 | M4. ARM64/live verification and handoff                | —         | Phase 7     | `not-started` |
 
@@ -1440,7 +1441,7 @@ Exit criteria:
 
 ## Phase 4 — Silero Service and TTS Client GREEN
 
-Status: `in-progress`
+Status: `completed`
 
 Target end state: `green`
 
@@ -1454,6 +1455,10 @@ Approved Phase 4 implementation decisions:
   `test` target;
 - pin `v5_5_ru.pt` at `145420684` bytes with SHA-256
   `50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437`;
+- accept the model only from the Git-ignored `.artifacts/tts/v5_5_ru.pt` build input; keep model acquisition during
+  image construction network-independent and defer the future CI artifact acquisition mechanism;
+- provide an explicit `make fetch-tts-model` bootstrap from the pinned Google Drive file ID with bounded retries,
+  exact checksum/size validation, and atomic local artifact replacement;
 - keep the model checksum in Docker/service code rather than operator YAML and verify it during image build and
   service startup;
 - bound completed WAV responses at `4194304` bytes in both the service and Node adapter;
@@ -1466,7 +1471,7 @@ Implement:
   deterministic `test` target;
 - strict config and stable API schemas;
 - HTTP supervisor plus inference subprocess;
-- pinned standalone Silero model download/checksum during private image build;
+- pinned standalone Silero model build input with checksum/size verification during private image build;
 - model load/warmup and readiness;
 - CPU-only deterministic synthesis;
 - PCM16 mono 48 kHz WAV encoding;
@@ -1495,32 +1500,28 @@ Implemented so far:
 - Added the pinned CPU-only runtime dependency declaration, model checksum/size build stage, development/runtime
   image targets, tracked TTS config, private Compose service, readiness healthcheck, attribution notice, and
   container-only `make lock-tts` / `make smoke-tts` workflows.
+- Added `make fetch-tts-model` for verified acquisition into the Git-ignored local build context without making the
+  Docker build depend on model network availability.
 - Kept the deterministic `test` image model-free and kept runtime startup independent from TTS; the production
   runtime still has no TTS adapter wiring before Phase 6.
 
-Current evidence:
+Completion evidence:
 
-- Complete Node `npm run check` passed: typecheck, lint, format, `58` suites / `569` tests, production build, and
+- Operator-confirmed aggregate `make test` passed with the locked containerized Python checks and complete Node
+  `npm run check`; Node evidence includes typecheck, lint, format, `58` suites / `569` tests, production build, and
   built-runtime smoke.
-- Offline Python behavior checks passed for strict/duplicate-key config, PCM WAV, checksum verification, and
-  supervisor start/synthesize/stop; all Python source/tests/scripts compile.
-- Offline Compose checks confirm the `development` target, private `expose` without host `ports`, no runtime/TTS
-  `depends_on`, and the unchanged profile-gated networkless `tts-test`.
+- `make fetch-tts-model` downloaded the Google Drive artifact into the ignored local build context, verified exactly
+  `145420684` bytes and SHA-256
+  `50081637b602126ee06cb3bc8a744d25651d2da149ee8864b9a379bfdd934437`, and atomically installed it.
+- Operator-confirmed the model-bearing Compose development image build, healthy TTS startup, and `make smoke-tts`
+  with `/health`, `/ready`, `baya`, alternate speaker `aidar`, and bounded PCM16 mono 48 kHz WAV validation.
+- Operator-confirmed the final `runtime` target builds for `linux/arm64` and inspects as `linux/arm64`.
+- Operator-confirmed the runtime restarts and remains healthy while the TTS service is stopped.
+- Deterministic Python coverage verifies malformed responses, busy admission, timeout/crash/cancellation cleanup,
+  hard shutdown, readiness clearing, and background worker replacement.
+- Compose evidence confirms private TTS `expose` without host `ports`, no runtime/TTS startup dependency, and the
+  unchanged profile-gated networkless `tts-test`.
 - Repository `git diff --check` passed.
-- `uv.lock`, containerized Python checks, model/image downloads, local/ARM64 builds, and real-model smoke remain
-  operator verification because this implementation environment is intentionally not downloading those artifacts.
-
-Run:
-
-- locked Python install in image stages;
-- the unchanged `tts-test` Compose workflow and aggregate `make test`, now fully green;
-- Node TTS-adapter specs;
-- TTS image build for the local architecture;
-- explicit `linux/arm64` image build;
-- TTS `/health`, `/ready`, and real WAV smoke;
-- malformed/busy/timeout/restart smoke;
-- complete Node regression checks;
-- `git diff --check`.
 
 Exit criteria:
 

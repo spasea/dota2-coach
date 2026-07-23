@@ -83,11 +83,15 @@ stability:
   previous_action_bonus: 5
 `;
 
-function waitForLog(child, lines, message, timeoutMs = 5_000) {
+function waitForLog(child, lines, outputLines, message, timeoutMs = 5_000) {
   return new Promise((resolve, reject) => {
+    const diagnostic = () => {
+      const recentOutput = outputLines.slice(-10).join('\n');
+      return recentOutput.length > 0 ? `\nRecent runtime output:\n${recentOutput}` : '';
+    };
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error(`Timed out waiting for log message: ${message}`));
+      reject(new Error(`Timed out waiting for log message: ${message}${diagnostic()}`));
     }, timeoutMs);
     const handleLine = (line) => {
       try {
@@ -103,7 +107,9 @@ function waitForLog(child, lines, message, timeoutMs = 5_000) {
     };
     const handleExit = (code, signal) => {
       cleanup();
-      reject(new Error(`Runtime exited before ${message}: code=${String(code)} signal=${String(signal)}`));
+      reject(
+        new Error(`Runtime exited before ${message}: code=${String(code)} signal=${String(signal)}${diagnostic()}`)
+      );
     };
     const cleanup = () => {
       clearTimeout(timeout);
@@ -148,6 +154,8 @@ const clientConfigPath = join(temporaryDirectory, 'clients.yaml');
 const clientCredentialsPath = join(temporaryDirectory, 'client-credentials.yaml');
 const discordConfigPath = join(temporaryDirectory, 'discord.yaml');
 const lostPolicyPath = join(temporaryDirectory, 'lost-policy.yaml');
+const smokeEnvironment = { ...process.env };
+delete smokeEnvironment.DISCORD_CREDENTIALS_PATH;
 let runtimeProcess;
 let invalidRuntimeProcess;
 
@@ -171,7 +179,7 @@ try {
   await once(portProbe, 'close');
 
   runtimeProcess = spawnRuntime({
-    ...process.env,
+    ...smokeEnvironment,
     CLIENT_CONFIG_PATH: clientConfigPath,
     CLIENT_CREDENTIALS_PATH: clientCredentialsPath,
     COACH_LOCALE: 'ru',
@@ -185,7 +193,8 @@ try {
   const outputLines = [];
   const lines = createInterface({ input: runtimeProcess.stdout });
   lines.on('line', (line) => outputLines.push(line));
-  const startedEntry = await waitForLog(runtimeProcess, lines, 'runtime started');
+  runtimeProcess.stderr.pipe(process.stderr);
+  const startedEntry = await waitForLog(runtimeProcess, lines, outputLines, 'runtime started');
   const baseUrl = `http://127.0.0.1:${String(startedEntry.port)}`;
 
   const healthResponse = await fetch(`${baseUrl}/health`);
@@ -211,7 +220,7 @@ try {
   assert.ok(outputLines.some((line) => line.includes('runtime stopped')));
 
   invalidRuntimeProcess = spawnRuntime({
-    ...process.env,
+    ...smokeEnvironment,
     CLIENT_CONFIG_PATH: '',
     CLIENT_CREDENTIALS_PATH: '',
   });
