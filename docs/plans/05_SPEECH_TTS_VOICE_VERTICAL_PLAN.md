@@ -571,6 +571,45 @@ It does not retry, enqueue, play, or expose raw response objects.
 - health/readiness;
 - stable safe errors and logs.
 
+### Local Python container workflow
+
+Python development and verification are container-only. The host is not required to install Python, `uv`, the
+application package, or its test/static-analysis dependencies.
+
+One multi-stage TTS Dockerfile evolves across the RED/GREEN pair:
+
+- Phase 3 adds the shared Debian/glibc Python base, locked dependency layers, and a `test` target;
+- Phase 4 adds the normal local `development` target and the minimal final `runtime` target;
+- the `test` target remains model-free across both phases and contains no PyTorch, FFmpeg, listening service, or
+  production entry point;
+- the `runtime` target is the only TTS image target intended for a future container-registry push.
+
+The development Compose document contains one profile-gated one-shot service named `tts-test`. It:
+
+- builds the Docker `test` target;
+- has `profiles: [test]`, no ports, no healthcheck, no dependencies, no restart policy, and no source bind mount;
+- runs without a container network after its image dependencies have been resolved during build;
+- runs format, lint, static typing, and Python tests, then exits with their combined result;
+- is absent from ordinary `docker compose up`;
+- is invoked explicitly from the repository root with:
+
+```text
+docker compose --project-directory ops/dev -f ops/dev/docker-compose.yml run --rm --build tts-test
+```
+
+The root Makefile exposes:
+
+- `test-tts` for the one-shot Compose command;
+- `test-runtime` for `npm --prefix apps/runtime run check`;
+- `test` for both checks, always attempting both and returning non-zero when either fails.
+
+The Phase 3 aggregate `make test` result is intentionally non-zero because the new Python and Node contract suites
+are RED. Phase 4 makes the same command green without changing the local entry point.
+
+Future CI configuration is outside this vertical. Its preserved workflow invariant is: build an immutable `test`
+target, run every TTS check in that image, build the `runtime` target from the same source revision and lock, and push
+that final target only after all checks pass.
+
 ### Manual HTTP boundary
 
 The runtime manual router owns:
@@ -993,6 +1032,8 @@ Exact filenames may change when implementation reveals a clearer local name, but
 must remain stable.
 
 ```text
+Makefile
+
 apps/
 ├── runtime/
 │   ├── package.json
@@ -1043,9 +1084,11 @@ apps/
 │               └── create-app.ts
 └── tts/
     ├── pyproject.toml
-    ├── dependency-lock-file
+    ├── uv.lock
     ├── README.md
     ├── THIRD_PARTY_NOTICES.md
+    ├── scripts/
+    │   └── check.sh
     ├── src/
     │   └── tts_service/
     │       ├── __init__.py
@@ -1263,7 +1306,23 @@ Status: `not-started`
 
 Target end state: `red-expected`
 
-Add intentional RED Python/Node contract specs for:
+Add the compile-safe Python service and Node client contract seams.
+
+Python package and container foundation:
+
+- `apps/tts` uses a `src` package layout, Python `3.11` on a Debian Bookworm slim/glibc base, and `uv`;
+- the `uv` binary and base image are pinned for reproducible image construction;
+- `pyproject.toml` plus `uv.lock` are the only Python dependency declaration/resolution sources;
+- initial application dependencies are Starlette, Uvicorn, and PyYAML;
+- the locked test group provides pytest, pytest-asyncio, the in-process HTTP test client, Ruff, and mypy;
+- `ops/services/tts/Dockerfile` adds shared dependency stages and a `test` target only;
+- the test image build does not run tests, start an HTTP server, install PyTorch, or contain a model artifact;
+- the test target defaults to `apps/tts/scripts/check.sh`, which runs Ruff format checking, Ruff linting, mypy, and
+  pytest in that order;
+- ordinary tests use in-process ASGI calls and fake worker/model/process ports, never a listening socket, live model,
+  or external network.
+
+Add intentional RED Python contract specs for:
 
 - strict TTS config;
 - health versus readiness;
@@ -1274,24 +1333,70 @@ Add intentional RED Python/Node contract specs for:
 - inference subprocess startup/warmup;
 - timeout/crash kill and replacement;
 - no text/path/traceback leakage;
+
+The Python supervisor specs use deterministic fake process/worker handles. They cover the contract state path:
+`stopped -> starting/unready -> ready -> busy -> ready`. Timeout, crash, malformed response, and cancellation must
+terminate and join the old worker, use a kill fallback when required, discard stale output, clear readiness, and
+start replacement outside the failed request.
+
+Add intentional RED Node TTS-adapter specs for:
+
 - runtime TTS request serialization;
 - abort/deadline behavior;
 - response content type/size/RIFF validation;
 - no retry;
 - stable runtime synthesis error mapping.
 
-Add compile-safe service/client seams only. Do not add a downloadable model artifact or wire Compose in RED.
+Extend the transport-neutral speech synthesis failure contract with bounded metadata sufficient for the coordinator
+to preserve:
+
+- `stage: "synthesis" | "tts_protocol"`;
+- `timedOut: boolean`;
+- a safe bounded reason/code without an HTTP response, request text, model detail, traceback, or local path.
+
+The adapter maps TTS `504` to a synthesis timeout, invalid/malformed/oversized WAV responses to a protocol failure,
+and bounded HTTP/network failures to synthesis failure. An external abort signal is forwarded and is not converted
+into an adapter-owned retry or timeout.
+
+Add the container-only local verification seam:
+
+- `ops/dev/docker-compose.yml` defines `tts-test` with `profiles: [test]`, Docker target `test`, `network_mode: none`,
+  and no ports, volumes, healthcheck, dependencies, or restart policy;
+- explicitly targeting `tts-test` runs it without enabling the test profile for normal services;
+- ordinary `docker compose up` remains unchanged and does not create or start a TTS container;
+- the repository root Makefile adds `test-tts`, `test-runtime`, and aggregate `test`;
+- aggregate `test` always runs both child targets and fails when either result is non-zero.
+
+Add compile-safe service/client seams only. Do not add a downloadable model artifact, PyTorch, a runnable TTS
+development/runtime target, a normal-profile TTS Compose service, a listening TTS process, or runtime-to-TTS wiring
+in RED.
 
 Run:
 
-- focused Python tests;
+- build the Docker `test` target successfully;
+- run focused Python tests inside `tts-test` and record intentional RED only at bounded implementation seams;
+- run Ruff format/lint and mypy inside `tts-test`; these checks must be green;
 - focused Node TTS-adapter specs;
-- all previously green checks.
+- the previous Node regression set with the new TTS adapter spec excluded;
+- Node typecheck, lint, format, build, and built-runtime smoke separately;
+- aggregate `make test`, confirming that both children run and the result is intentional RED;
+- render the Compose configuration and verify that `tts-test` is profile-gated, network-isolated, and absent from
+  ordinary `docker compose up`;
+- `git diff --check`.
 
 Exit criteria:
 
 - New specs fail only for missing TTS service/client behavior.
-- Existing runtime remains green and unwired from TTS.
+- The TTS test image builds from the lock, and its format/lint/type checks are green before pytest reaches expected
+  RED assertions.
+- Existing Node coverage remains green when the new adapter suite is excluded; typecheck, lint, format, build, and
+  built-runtime smoke remain green.
+- `make test` runs both TTS and runtime checks even when the first fails, then returns non-zero for the intentional
+  RED suites.
+- Ordinary Compose startup still contains no TTS runtime service, exposed TTS port, or runtime dependency on TTS.
+- The `tts-test` container publishes no port, has no runtime dependency, runs without a network, exits after checks,
+  and is removed by the canonical `run --rm` workflow.
+- Existing runtime remains unwired from TTS.
 - No live model/network is required for ordinary deterministic tests.
 - M2 remains `not-started`.
 
@@ -1303,7 +1408,8 @@ Target end state: `green`
 
 Implement:
 
-- Python service package and locked dependencies;
+- add a runtime/model dependency group with the explicitly pinned CPU-only PyTorch wheel while keeping it out of the
+  deterministic `test` target;
 - strict config and stable API schemas;
 - HTTP supervisor plus inference subprocess;
 - pinned standalone Silero model download/checksum during private image build;
@@ -1314,7 +1420,8 @@ Implement:
 - hard worker kill/restart on timeout/crash;
 - safe TTS lifecycle/delivery logs;
 - runtime TTS HTTP adapter;
-- TTS Dockerfile with required `linux/arm64` support;
+- extend the Phase 3 TTS Dockerfile with local `development` and final `runtime` targets plus required `linux/arm64`
+  support;
 - Compose `tts` service, private port, config mount, and healthcheck;
 - runtime network URL without startup health gating.
 
@@ -1323,9 +1430,8 @@ real pinned model.
 
 Run:
 
-- locked Python install;
-- Python unit tests;
-- Python static/format checks selected by the package;
+- locked Python install in image stages;
+- the unchanged `tts-test` Compose workflow and aggregate `make test`, now fully green;
 - Node TTS-adapter specs;
 - TTS image build for the local architecture;
 - explicit `linux/arm64` image build;
