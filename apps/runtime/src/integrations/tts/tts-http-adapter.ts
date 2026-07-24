@@ -67,9 +67,37 @@ export function createTtsReadinessProbe(
   options: Pick<TtsHttpAdapterOptions, 'baseUrl'>,
   dependencies: TtsHttpAdapterDependencies
 ): ProbeTtsReadiness {
-  void options;
-  void dependencies;
-  return () => Promise.resolve('unavailable');
+  return async (signal) => {
+    try {
+      const response = await dependencies.fetch(`${options.baseUrl}/ready`, {
+        method: 'GET',
+        signal,
+      });
+
+      if (response.status !== 200) {
+        return 'unavailable';
+      }
+
+      const body = await readBoundedBody(response, 4_096);
+      const document: unknown = JSON.parse(new TextDecoder().decode(body));
+      if (
+        typeof document !== 'object' ||
+        document === null ||
+        !('status' in document) ||
+        document.status !== 'ready' ||
+        !('model' in document) ||
+        typeof document.model !== 'string' ||
+        !('device' in document) ||
+        typeof document.device !== 'string'
+      ) {
+        return 'unavailable';
+      }
+
+      return 'ready';
+    } catch {
+      return 'unavailable';
+    }
+  };
 }
 
 const errorMappings = new Map<string, Readonly<{ reason: SpeechSynthesisFailureReason; timedOut: boolean }>>([

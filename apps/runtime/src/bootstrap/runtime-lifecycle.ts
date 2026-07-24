@@ -98,15 +98,23 @@ async function startRuntime(
     options.discord.startAcceptingInteractions();
     await options.discord.connect();
   } catch {
-    await rollbackDiscord(options.discord, removeObserver);
+    await rollbackServing(options.discord, options.speech, removeObserver);
     throw new RuntimeStartupError('discord_connect');
   }
 
   try {
     await options.discord.validatePanel();
   } catch {
-    await rollbackDiscord(options.discord, removeObserver);
+    await rollbackServing(options.discord, options.speech, removeObserver);
     throw new RuntimeStartupError('discord_panel_validation');
+  }
+
+  if (options.speech !== null) {
+    try {
+      options.speech.startRecovering();
+    } catch {
+      // Operational speech failure must not block HTTP or Discord text readiness.
+    }
   }
 
   let address: RuntimeAddress;
@@ -114,7 +122,7 @@ async function startRuntime(
   try {
     address = await options.http.start();
   } catch {
-    await rollbackDiscord(options.discord, removeObserver);
+    await rollbackServing(options.discord, options.speech, removeObserver);
     throw new RuntimeStartupError('http_bind');
   }
 
@@ -130,11 +138,29 @@ async function startHttp(http: HttpRuntimeLifecycle): Promise<RuntimeAddress> {
   }
 }
 
-async function rollbackDiscord(discord: DiscordServingLifecycle, removeGatewayObserver: () => void): Promise<void> {
+async function rollbackServing(
+  discord: DiscordServingLifecycle,
+  speech: SpeechServingLifecycle | null,
+  removeGatewayObserver: () => void
+): Promise<void> {
   try {
     discord.stopAcceptingInteractions();
   } catch {
     // Startup retains its original safe failure even when rollback is partial.
+  }
+
+  if (speech !== null) {
+    try {
+      await speech.stop();
+    } catch {
+      // Startup retains its original safe failure even when rollback is partial.
+    }
+
+    try {
+      await speech.destroy();
+    } catch {
+      // Startup retains its original safe failure even when rollback is partial.
+    }
   }
 
   try {
@@ -164,10 +190,26 @@ async function stopRuntime(
     }
   }
 
+  if (options.speech !== null) {
+    try {
+      await options.speech.stop();
+    } catch (error) {
+      firstFailure ??= toShutdownError(error);
+    }
+  }
+
   try {
     await options.http.stop();
   } catch (error) {
     firstFailure ??= toShutdownError(error);
+  }
+
+  if (options.speech !== null) {
+    try {
+      await options.speech.destroy();
+    } catch (error) {
+      firstFailure ??= toShutdownError(error);
+    }
   }
 
   if (options.discord !== null) {

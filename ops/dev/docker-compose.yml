@@ -16,7 +16,7 @@ services:
       CLIENT_CREDENTIALS_PATH: /run/secrets/dota2-coach/client-credentials.local.yaml
       COACH_LOCALE: ru
       DISCORD_CONFIG_PATH: /etc/dota2-coach/discord.yaml
-      DISCORD_CREDENTIALS_PATH:
+      DISCORD_CREDENTIALS_PATH: /run/secrets/dota2-coach/discord-credentials.local.yaml
       DISCORD_CREATE_PANEL: ${DISCORD_CREATE_PANEL:-false}
       GSI_FRESHNESS_MS: 5000
       HOST: 0.0.0.0
@@ -24,6 +24,8 @@ services:
       LOST_CONSOLE_DEBUG_ENABLED: ${LOST_CONSOLE_DEBUG_ENABLED:-false}
       LOST_POLICY_PATH: /etc/dota2-coach/lost-policy.yaml
       PORT: 3000
+      SPEECH_CONFIG_PATH: /etc/dota2-coach/speech.yaml
+      SPEECH_CREDENTIALS_PATH: /run/secrets/dota2-coach/speech-credentials.local.yaml
     ports:
       - '${RUNTIME_PORT:-3000}:3000'
     volumes:
@@ -32,6 +34,7 @@ services:
       - ./config/runtime/clients.yaml:/etc/dota2-coach/clients.yaml:ro
       - ./config/runtime/discord.yaml:/etc/dota2-coach/discord.yaml:ro
       - ./config/runtime/lost-policy.yaml:/etc/dota2-coach/lost-policy.yaml:ro
+      - ./config/runtime/speech.yaml:/etc/dota2-coach/speech.yaml:ro
       - ./secrets/runtime:/run/secrets/dota2-coach:ro
     healthcheck:
       test: >-

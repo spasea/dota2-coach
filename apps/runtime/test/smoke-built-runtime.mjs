@@ -27,6 +27,11 @@ schema_version: 1
 discord:
   enabled: false
 `;
+const speechYaml = `
+schema_version: 1
+speech:
+  enabled: false
+`;
 const lostPolicyYaml = `
 schema_version: 1
 map_depth:
@@ -154,8 +159,10 @@ const clientConfigPath = join(temporaryDirectory, 'clients.yaml');
 const clientCredentialsPath = join(temporaryDirectory, 'client-credentials.yaml');
 const discordConfigPath = join(temporaryDirectory, 'discord.yaml');
 const lostPolicyPath = join(temporaryDirectory, 'lost-policy.yaml');
+const speechConfigPath = join(temporaryDirectory, 'speech.yaml');
 const smokeEnvironment = { ...process.env };
 delete smokeEnvironment.DISCORD_CREDENTIALS_PATH;
+delete smokeEnvironment.SPEECH_CREDENTIALS_PATH;
 let runtimeProcess;
 let invalidRuntimeProcess;
 
@@ -165,6 +172,7 @@ try {
     writeFile(clientCredentialsPath, credentialsYaml, 'utf8'),
     writeFile(discordConfigPath, discordYaml, 'utf8'),
     writeFile(lostPolicyPath, lostPolicyYaml, 'utf8'),
+    writeFile(speechConfigPath, speechYaml, 'utf8'),
   ]);
 
   const portProbe = createServer();
@@ -189,6 +197,7 @@ try {
     HOST: '127.0.0.1',
     LOG_LEVEL: 'info',
     PORT: String(runtimePort),
+    SPEECH_CONFIG_PATH: speechConfigPath,
   });
   const outputLines = [];
   const lines = createInterface({ input: runtimeProcess.stdout });

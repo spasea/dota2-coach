@@ -44,7 +44,7 @@ export type DiscordGatewayMode = 'provisioning' | 'serving';
 
 export const discordGatewayIntents: Readonly<Record<DiscordGatewayMode, readonly GatewayIntentBits[]>> = Object.freeze({
   provisioning: Object.freeze([GatewayIntentBits.Guilds]),
-  serving: Object.freeze([GatewayIntentBits.Guilds]),
+  serving: Object.freeze([GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]),
 });
 
 export function createDiscordGatewayAdapter(

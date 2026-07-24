@@ -2,6 +2,8 @@ FROM node:24-alpine AS dependencies
 
 WORKDIR /app
 
+RUN apk add --no-cache ffmpeg
+
 COPY apps/runtime/package.json apps/runtime/package-lock.json ./
 
 RUN npm ci
@@ -23,6 +25,8 @@ FROM node:24-alpine AS runtime
 ENV NODE_ENV=production
 
 WORKDIR /app
+
+RUN apk add --no-cache ffmpeg
 
 COPY apps/runtime/package.json apps/runtime/package-lock.json ./
 

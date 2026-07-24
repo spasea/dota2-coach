@@ -26,6 +26,26 @@ describe('TTS HTTP adapter', () => {
     });
   });
 
+  it.each([
+    ['an unready response', new Response(JSON.stringify({ status: 'unavailable' }), { status: 503 })],
+    ['a malformed success body', new Response(JSON.stringify({ status: 'ready' }), { status: 200 })],
+    ['an oversized success body', new Response('x'.repeat(4_097), { status: 200 })],
+  ])('maps %s to unavailable without retrying', async (_caseName, response) => {
+    const fetch = jest.fn<typeof globalThis.fetch>().mockResolvedValue(response);
+    const probeReadiness = createTtsReadinessProbe(defaultOptions, { fetch });
+
+    await expect(probeReadiness(new AbortController().signal)).resolves.toBe('unavailable');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps a readiness network failure to unavailable without exposing it', async () => {
+    const fetch = jest.fn<typeof globalThis.fetch>().mockRejectedValue(new Error('private readiness network details'));
+    const probeReadiness = createTtsReadinessProbe(defaultOptions, { fetch });
+
+    await expect(probeReadiness(new AbortController().signal)).resolves.toBe('unavailable');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('serializes the exact versioned synthesis request and returns an immutable audio artifact', async () => {
     const fixture = createFixture(successResponse());
 

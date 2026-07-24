@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 
+import type { Router } from 'express';
 import type { Logger } from 'pino';
 
 import { createLostConsoleDebug } from '../integrations/console/lost-console-debug.js';
@@ -60,6 +61,10 @@ export type CreateRuntimeDependencies = Readonly<{
   writeDebugOutput: (output: string) => void;
 }>;
 
+export type CreateRuntimeOptions = Readonly<{
+  manualSpeechRouter: Router | null;
+}>;
+
 const defaultDependencies: CreateRuntimeDependencies = Object.freeze({
   createLogger: createPinoLogger,
   monotonicNow: readMonotonicMilliseconds,
@@ -68,9 +73,14 @@ const defaultDependencies: CreateRuntimeDependencies = Object.freeze({
   writeDebugOutput: (output) => process.stdout.write(`${output}\n`),
 });
 
+const defaultOptions: CreateRuntimeOptions = Object.freeze({
+  manualSpeechRouter: null,
+});
+
 export async function createRuntime(
   environment: Readonly<Record<string, string | undefined>>,
-  dependencies: CreateRuntimeDependencies = defaultDependencies
+  dependencies: CreateRuntimeDependencies = defaultDependencies,
+  options: CreateRuntimeOptions = defaultOptions
 ): Promise<Runtime> {
   const settings = parseRuntimeSettings(environment);
   const logger = dependencies.createLogger(settings.logLevel);
@@ -149,7 +159,7 @@ export async function createRuntime(
   const app = createApp({
     gsiBodyLimitBytes: GSI_BODY_LIMIT_BYTES,
     logger,
-    manualSpeechRouter: null,
+    manualSpeechRouter: options.manualSpeechRouter,
     recordClientSnapshot: recordClientSnapshotWithDebug,
     requestIdFactory: dependencies.requestIdFactory,
     trustedClientRegistry,
@@ -200,7 +210,8 @@ export async function createRuntime(
 
 export function createRuntimeWithLogger(
   environment: Readonly<Record<string, string | undefined>>,
-  logger: Logger
+  logger: Logger,
+  manualSpeechRouter: Router | null = null
 ): Promise<Runtime> {
-  return createRuntime(environment, { ...defaultDependencies, createLogger: () => logger });
+  return createRuntime(environment, { ...defaultDependencies, createLogger: () => logger }, { manualSpeechRouter });
 }

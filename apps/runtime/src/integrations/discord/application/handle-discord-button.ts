@@ -213,6 +213,17 @@ async function handleLostAction(input: ActionInput): Promise<void> {
     return;
   }
 
+  try {
+    dependencies.enqueueSpeech({
+      requestId: interaction.requestId,
+      source: 'lost',
+      speaker: 'baya',
+      text: recommendationResult.recommendation.voiceText,
+    });
+  } catch {
+    // Public text delivery remains successful when optional speech admission fails unexpectedly.
+  }
+
   recordEvent(dependencies, {
     requestId: interaction.requestId,
     code: 'DISCORD_LOST_DELIVERED',

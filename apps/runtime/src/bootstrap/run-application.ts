@@ -2,12 +2,13 @@ import type {
   DiscordPanelProvisionStage,
   ProvisionDiscordPanelResult,
 } from '../integrations/discord/panel/discord-panel-lifecycle.js';
-import type { DiscordConfiguration } from '../platform/config/config.types.js';
+import type { DiscordConfiguration, SpeechConfiguration } from '../platform/config/config.types.js';
 import {
   ConfigurationError,
   type ConfigurationSource,
   type ConfigurationStage,
 } from '../platform/config/configuration-error.js';
+import { assertSpeechDiscordCompatibility } from '../platform/config/parse-speech-config.js';
 import type { Runtime } from './create-runtime.js';
 import type { RuntimeStartupStage } from './runtime-lifecycle.js';
 
@@ -23,12 +24,14 @@ export type RunApplicationDependencies = Readonly<{
   loadDiscordConfiguration: (
     environment: Readonly<Record<string, string | undefined>>
   ) => Promise<DiscordConfiguration>;
+  loadSpeechConfiguration: (environment: Readonly<Record<string, string | undefined>>) => Promise<SpeechConfiguration>;
   provisionDiscordPanel: (
     configuration: Extract<DiscordConfiguration, Readonly<{ enabled: true }>>
   ) => Promise<ProvisionDiscordPanelResult>;
   createServingRuntime: (
     environment: Readonly<Record<string, string | undefined>>,
-    configuration: DiscordConfiguration
+    discordConfiguration: DiscordConfiguration,
+    speechConfiguration: SpeechConfiguration
   ) => Promise<ServingRuntime>;
   recordPanelCreated: (result: ProvisionDiscordPanelResult) => void;
 }>;
@@ -73,7 +76,9 @@ export async function runApplication(
     return Object.freeze({ kind: 'provisioned' });
   }
 
-  const runtime = await dependencies.createServingRuntime(environment, discordConfiguration);
+  const speechConfiguration = await dependencies.loadSpeechConfiguration(environment);
+  assertSpeechDiscordCompatibility(speechConfiguration, discordConfiguration);
+  const runtime = await dependencies.createServingRuntime(environment, discordConfiguration, speechConfiguration);
   await runtime.start();
   return Object.freeze({ kind: 'serving', runtime });
 }

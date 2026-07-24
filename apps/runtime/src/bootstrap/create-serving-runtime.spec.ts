@@ -3,6 +3,8 @@ import pino from 'pino';
 
 import type { DiscordGatewayAdapter } from '../integrations/discord/infrastructure/discord-gateway-adapter.js';
 import type { DiscordInteractionSource } from '../integrations/discord/infrastructure/discord-interaction-adapter.js';
+import type { DiscordServingAdapters } from '../integrations/discord/infrastructure/discord-serving-adapters.js';
+import type { DiscordVoiceAdapter } from '../integrations/discord/infrastructure/discord-voice-adapter.js';
 import { createRussianDiscordTranslator } from '../integrations/discord/infrastructure/russian-discord-translator.js';
 import { createDiscordPanelDefinition } from '../integrations/discord/panel/discord-panel.js';
 import { ConfigurationError } from '../platform/config/configuration-error.js';
@@ -10,6 +12,7 @@ import { createServingRuntime, type CreateServingRuntimeDependencies } from './c
 import type { Runtime } from './create-runtime.js';
 
 const disabledConfiguration = Object.freeze({ schemaVersion: 1 as const, enabled: false as const });
+const disabledSpeechConfiguration = Object.freeze({ schemaVersion: 1 as const, enabled: false as const });
 const enabledConfiguration = Object.freeze({
   schemaVersion: 1 as const,
   enabled: true as const,
@@ -19,11 +22,36 @@ const enabledConfiguration = Object.freeze({
   actionDebounceMs: 5_000,
   botToken: 'private-test-token',
 });
+const enabledSpeechConfiguration = Object.freeze({
+  schemaVersion: 1 as const,
+  enabled: true as const,
+  voiceChannelId: '678901234567890123',
+  ttsBaseUrl: 'http://tts:8080',
+  recommendationSpeaker: 'baya' as const,
+  jobTtlMs: 20_000,
+  ttsTimeoutMs: 7_000,
+  voiceReadyTimeoutMs: 3_000,
+  playbackTimeoutMs: 15_000,
+  consecutiveFailuresBeforeTextOnly: 2,
+  recoveryProbeIntervalMs: 5_000,
+  queueCapacity: 10,
+  manual: Object.freeze({
+    enabled: true as const,
+    maxTextCharacters: 300 as const,
+    bearerToken: 'long-private-manual-speech-token',
+  }),
+});
 
 describe('serving runtime composition', () => {
   it('keeps disabled Discord on the HTTP-only lifecycle without constructing an SDK adapter', async () => {
     const fixture = createServingFixture();
-    const runtime = await createServingRuntime({}, disabledConfiguration, fixture.logger, fixture.dependencies);
+    const runtime = await createServingRuntime(
+      {},
+      disabledConfiguration,
+      disabledSpeechConfiguration,
+      fixture.logger,
+      fixture.dependencies
+    );
 
     await runtime.start();
     await runtime.stop();
@@ -34,7 +62,13 @@ describe('serving runtime composition', () => {
 
   it('wires one interaction listener, validates the canonical panel, and binds HTTP last', async () => {
     const fixture = createServingFixture();
-    const runtime = await createServingRuntime({}, enabledConfiguration, fixture.logger, fixture.dependencies);
+    const runtime = await createServingRuntime(
+      {},
+      enabledConfiguration,
+      disabledSpeechConfiguration,
+      fixture.logger,
+      fixture.dependencies
+    );
 
     await runtime.start();
 
@@ -62,7 +96,13 @@ describe('serving runtime composition', () => {
 
   it('delegates registered interactions through the contained application handler', async () => {
     const fixture = createServingFixture();
-    const runtime = await createServingRuntime({}, enabledConfiguration, fixture.logger, fixture.dependencies);
+    const runtime = await createServingRuntime(
+      {},
+      enabledConfiguration,
+      disabledSpeechConfiguration,
+      fixture.logger,
+      fixture.dependencies
+    );
     const replyEphemeral = jest.fn<(content: string) => Promise<void>>().mockResolvedValue(undefined);
 
     await runtime.start();
@@ -77,13 +117,66 @@ describe('serving runtime composition', () => {
     await runtime.stop();
   });
 
+  it('wires shared voice recovery and the protected manual router without delaying HTTP startup', async () => {
+    const fixture = createServingFixture();
+    const runtime = await createServingRuntime(
+      {},
+      enabledConfiguration,
+      enabledSpeechConfiguration,
+      fixture.logger,
+      fixture.dependencies
+    );
+
+    await runtime.start();
+    await Promise.resolve();
+
+    expect(fixture.createDiscordGateway).not.toHaveBeenCalled();
+    expect(fixture.createDiscordServingAdapters).toHaveBeenCalledWith('private-test-token', {
+      guildId: enabledConfiguration.guildId,
+      voiceChannelId: enabledSpeechConfiguration.voiceChannelId,
+    });
+    expect(fixture.manualSpeechRouter).not.toBeNull();
+    expect(fixture.operations).toContain('http_start');
+
+    await runtime.stop();
+
+    expect(fixture.operations.slice(-6)).toEqual([
+      'remove_interactions',
+      'voice_stop',
+      'http_stop',
+      'voice_destroy',
+      'remove_gateway_state',
+      'discord_destroy',
+    ]);
+  });
+
+  it('starts HTTP and Discord text while TTS readiness is unavailable', async () => {
+    const fixture = createServingFixture({ ttsUnavailable: true });
+    const runtime = await createServingRuntime(
+      {},
+      enabledConfiguration,
+      enabledSpeechConfiguration,
+      fixture.logger,
+      fixture.dependencies
+    );
+
+    await expect(runtime.start()).resolves.toEqual({ host: '127.0.0.1', port: 3000 });
+    expect(fixture.operations).toContain('http_start');
+
+    await runtime.stop();
+  });
+
   it('rejects an enabled serving configuration without a canonical control message before SDK construction', async () => {
     const fixture = createServingFixture();
     const invalidConfiguration = Object.freeze({ ...enabledConfiguration, controlMessageId: null });
 
-    const result = await createServingRuntime({}, invalidConfiguration, fixture.logger, fixture.dependencies).catch(
-      (error: unknown) => error
-    );
+    const result = await createServingRuntime(
+      {},
+      invalidConfiguration,
+      disabledSpeechConfiguration,
+      fixture.logger,
+      fixture.dependencies
+    ).catch((error: unknown) => error);
 
     expect(result).toBeInstanceOf(ConfigurationError);
     expect(result).toMatchObject({ source: 'discord_combined', stage: 'validation' });
@@ -91,10 +184,11 @@ describe('serving runtime composition', () => {
   });
 });
 
-function createServingFixture() {
+function createServingFixture(options: Readonly<{ ttsUnavailable?: boolean }> = {}) {
   const operations: string[] = [];
   const logger = pino({ level: 'silent' });
   let interactionObserver: ((source: DiscordInteractionSource) => Promise<void>) | null = null;
+  let manualSpeechRouter: unknown = null;
   const panel = createDiscordPanelDefinition(createRussianDiscordTranslator());
   const gateway: DiscordGatewayAdapter = Object.freeze({
     connect: () => {
@@ -165,19 +259,52 @@ function createServingFixture() {
     setRequesterRoleOverride: () => Object.freeze({ status: 'snapshot_missing' }),
   } as unknown as Runtime;
   const createDiscordGateway = jest.fn<(botToken: string) => DiscordGatewayAdapter>().mockReturnValue(gateway);
+  const voice: DiscordVoiceAdapter = Object.freeze({
+    recover: () => Promise.resolve('ready' as const),
+    waitUntilReady: () => Promise.resolve(),
+    play: () => Promise.resolve(),
+    stop: () => {
+      operations.push('voice_stop');
+      return Promise.resolve();
+    },
+    destroy: () => {
+      operations.push('voice_destroy');
+      return Promise.resolve();
+    },
+  });
+  const sharedAdapters: DiscordServingAdapters = Object.freeze({ gateway, voice });
+  const createDiscordServingAdapters = jest
+    .fn<CreateServingRuntimeDependencies['createDiscordServingAdapters']>()
+    .mockReturnValue(sharedAdapters);
   const dependencies: CreateServingRuntimeDependencies = Object.freeze({
-    createCoreRuntime: () => Promise.resolve(coreRuntime),
+    createCoreRuntime: (_environment, _logger, currentManualSpeechRouter) => {
+      manualSpeechRouter = currentManualSpeechRouter;
+      return Promise.resolve(coreRuntime);
+    },
     createDiscordGateway,
+    createDiscordServingAdapters,
+    createJobId: () => 'speech-job-01',
+    fetch:
+      options.ttsUnavailable === true
+        ? jest.fn<typeof globalThis.fetch>().mockRejectedValue(new Error('TTS unavailable'))
+        : jest
+            .fn<typeof globalThis.fetch>()
+            .mockResolvedValue(new Response(JSON.stringify({ status: 'ready', model: 'v5_5_ru', device: 'cpu' }))),
     monotonicNow: () => 12_345,
+    scheduleTask: () => () => undefined,
   });
 
   return {
     createDiscordGateway,
+    createDiscordServingAdapters,
     dependencies,
     get interactionObserver() {
       return interactionObserver;
     },
     logger,
+    get manualSpeechRouter() {
+      return manualSpeechRouter;
+    },
     operations,
   };
 }

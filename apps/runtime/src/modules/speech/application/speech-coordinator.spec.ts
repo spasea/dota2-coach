@@ -149,6 +149,15 @@ describe('Speech coordinator', () => {
     expect(context.coordinator.enqueue(manualInput())).toEqual({ status: 'text_only' });
     expect(recoverSpeechDelivery).toHaveBeenCalledTimes(1);
     expect(context.scheduledTasks.filter((task) => task.delayMs === 5_000 && !task.cancelled)).toHaveLength(1);
+    expect(context.events).toContainEqual(
+      expect.objectContaining({
+        code: 'SPEECH_DELIVERY_FAILED',
+        requestId: 'manual-request-01',
+        status: 'skipped_text_only',
+        failureStage: 'admission',
+        circuitState: 'open',
+      })
+    );
   });
 
   it('accepts jobs only while started and returns immutable admission results', async () => {

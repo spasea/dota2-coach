@@ -31,6 +31,10 @@ const servingDiscordConfiguration = Object.freeze({
   ...provisioningDiscordConfiguration,
   controlMessageId: panelResult.controlMessageId,
 });
+const disabledSpeechConfiguration = Object.freeze({
+  schemaVersion: 1 as const,
+  enabled: false as const,
+});
 
 describe('application process orchestration', () => {
   it('runs one-shot provisioning without constructing or starting the serving runtime', async () => {
@@ -56,6 +60,7 @@ describe('application process orchestration', () => {
     expect(fixture.operations).toEqual([
       'resolve_mode',
       'load_discord_configuration',
+      'load_speech_configuration',
       'create_serving_runtime',
       'start_serving_runtime',
     ]);
@@ -126,6 +131,10 @@ function createApplicationFixture(mode: RuntimeProcessMode, options: Application
       return Promise.resolve(
         mode.kind === 'provision_discord_panel' ? provisioningDiscordConfiguration : servingDiscordConfiguration
       );
+    },
+    loadSpeechConfiguration: () => {
+      operations.push('load_speech_configuration');
+      return Promise.resolve(disabledSpeechConfiguration);
     },
     provisionDiscordPanel: () => {
       operations.push('provision_panel');

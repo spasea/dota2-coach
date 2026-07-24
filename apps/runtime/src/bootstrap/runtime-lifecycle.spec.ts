@@ -76,6 +76,25 @@ describe('HTTP and Discord runtime lifecycle', () => {
     ]);
   });
 
+  it('cleans unstarted speech resources before Discord after panel validation failure', async () => {
+    const fixture = createLifecycleFixture({
+      speechEnabled: true,
+      validationError: new Error('validation'),
+    });
+
+    await expect(fixture.lifecycle.start()).rejects.toBeDefined();
+
+    expect(fixture.operations).toEqual([
+      'start_accepting_interactions',
+      'discord_connect',
+      'validate_panel',
+      'stop_accepting_interactions',
+      'speech_stop',
+      'speech_destroy',
+      'discord_destroy',
+    ]);
+  });
+
   it('maps interaction-listener setup failure to Discord connect and rolls back', async () => {
     const fixture = createLifecycleFixture({ startAcceptingError: new Error('raw listener setup failure') });
 

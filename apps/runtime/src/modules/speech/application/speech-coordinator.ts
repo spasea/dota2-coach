@@ -398,12 +398,25 @@ export function createSpeechCoordinator(
     scheduleRecovery();
   }
 
-  const start = (): void => {
+  const start = (initialMode: 'ready' | 'recovering' = 'ready'): void => {
     if (lifecycle === 'running' || shutdownPromise !== null) {
       return;
     }
 
     lifecycle = 'running';
+
+    if (initialMode === 'recovering') {
+      circuitState = 'open';
+      const currentRecovery = recoverDelivery();
+      recoveryPromise = currentRecovery;
+      void currentRecovery.finally(() => {
+        if (recoveryPromise === currentRecovery) {
+          recoveryPromise = null;
+        }
+      });
+      return;
+    }
+
     scheduleDrain();
   };
 
@@ -413,6 +426,18 @@ export function createSpeechCoordinator(
     }
 
     if (circuitState !== 'closed') {
+      dependencies.recordEvent(
+        Object.freeze({
+          code: 'SPEECH_DELIVERY_FAILED',
+          requestId: input.requestId,
+          source: input.source,
+          speaker: input.speaker,
+          status: 'skipped_text_only',
+          failureStage: 'admission',
+          queueDepth: waitingJobs.length,
+          circuitState,
+        })
+      );
       return Object.freeze({ status: 'text_only' });
     }
 

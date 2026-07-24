@@ -1,47 +1,66 @@
 # Local Discord runtime operations
 
-The tracked development configuration keeps Discord disabled, so the normal runtime and health check need no bot
-token or external Discord connection.
+The tracked development configuration enables Discord text, Discord voice, TTS, and the protected manual speech
+endpoint. Local credential files are ignored by Git.
 
 ```bash
-docker compose -f ops/dev/docker-compose.yml config
-docker compose -f ops/dev/docker-compose.yml up --build runtime
+cp ops/dev/secrets/runtime/discord-credentials.example.yaml \
+  ops/dev/secrets/runtime/discord-credentials.local.yaml
+cp ops/dev/secrets/runtime/speech-credentials.example.yaml \
+  ops/dev/secrets/runtime/speech-credentials.local.yaml
 ```
 
-## Enable Discord and create the control panel
+Replace both placeholders before starting the stack. The Discord bot needs:
 
-1. Copy `ops/dev/secrets/runtime/discord-credentials.example.yaml` to
-   `ops/dev/secrets/runtime/discord-credentials.local.yaml` and replace the placeholder token. Local secret files are
-   ignored by Git.
-2. Change `ops/dev/config/runtime/discord.yaml` to an enabled document without `control_message_id`:
+- View Channel, Read Message History, Send Messages, and Manage Messages in the configured text channel;
+- View Channel, Connect, and Speak in the configured normal guild voice channel.
 
-   ```yaml
-   schema_version: 1
+The configured text and voice channels must belong to the configured guild. Stage channels are not supported.
 
-   discord:
-     enabled: true
-     guild_id: "123456789012345678"
-     text_channel_id: "234567890123456789"
-     action_debounce_ms: 5000
-   ```
+```bash
+docker compose --project-directory ops/dev -f ops/dev/docker-compose.yml config
+docker compose --project-directory ops/dev -f ops/dev/docker-compose.yml up --build runtime tts
+```
 
-3. Set these local `.env` values:
+The runtime joins voice asynchronously after Discord text/panel validation. HTTP readiness, GSI, and Lost text remain
+available while TTS is warming up, absent, or temporarily unavailable. TTS port `8080` is private to the Compose
+network and is not published to the host.
+
+## Create or replace the Discord control panel
+
+1. Temporarily remove `control_message_id` from `ops/dev/config/runtime/discord.yaml`.
+2. Set this local `.env` value:
 
    ```dotenv
-   DISCORD_CREDENTIALS_PATH=/run/secrets/dota2-coach/discord-credentials.local.yaml
    DISCORD_CREATE_PANEL=true
    ```
 
-4. Run the one-shot process without the development file watcher:
+3. Run the one-shot process without the development file watcher:
 
    ```bash
-   docker compose --env-file ops/dev/.env -f ops/dev/docker-compose.yml run --rm --no-deps runtime npx tsx src/main.ts
+   docker compose --env-file ops/dev/.env \
+     --project-directory ops/dev \
+     -f ops/dev/docker-compose.yml \
+     run --rm --no-deps runtime npx tsx src/main.ts
    ```
 
 On success, copy `controlMessageId` from the `DISCORD_PANEL_CREATED` log into the public configuration as
 `control_message_id`. Then set `DISCORD_CREATE_PANEL=false` and start the normal service. Normal serving validates and
-reuses that pinned message; it does not create or mutate the panel.
+reuses that pinned message; it does not create or mutate the panel. Provisioning remains text-only: it neither loads
+speech configuration nor joins voice.
 
-The bot needs only View Channel, Read Message History, Send Messages, and Manage Messages (for pinning) in the
-configured text channel. Provisioning exits without binding the HTTP port. Normal startup exposes HTTP readiness only
-after Discord login and panel validation succeed.
+## Manual speech smoke
+
+Read the Bearer token from the ignored speech credentials file and submit:
+
+```bash
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer ${MANUAL_SPEECH_TOKEN}" \
+  --header 'Content-Type: application/json' \
+  --data '{"speaker":"aidar","text":"Проверка ручного синтеза речи."}' \
+  http://127.0.0.1:3000/internal/speech-jobs
+```
+
+A healthy speech path returns `202` with an opaque job ID. While recovery is text-only, the same valid request returns
+the stable `503 SPEECH_UNAVAILABLE` response.

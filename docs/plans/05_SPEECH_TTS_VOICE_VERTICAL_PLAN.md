@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 5 — Discord Voice and Lost Integration RED (red-expected)`
+- Current implementation phase: `Phase 6 — Discord Voice and Lost Integration GREEN (in-progress)`
 - Last updated: `2026-07-24`
 
 Status values:
@@ -1596,7 +1596,7 @@ Exit criteria:
 
 ## Phase 6 — Discord Voice and Lost Integration GREEN
 
-Status: `not-started`
+Status: `in-progress`
 
 Target end state: `green`
 
@@ -1625,6 +1625,23 @@ Run:
 - runtime start with TTS absent/unready;
 - safe shutdown during queued, synthesizing, and playing states;
 - `git diff --check`.
+
+Implementation evidence:
+
+- Implemented immediate text-only recovery, bounded TTS `/ready` and Discord voice probes, Lost text-first admission,
+  and the shared Lost/manual coordinator.
+- Added one shared serving Discord client with `Guilds` and `GuildVoiceStates`; provisioning remains `Guilds`-only.
+- Implemented exact normal guild voice-channel and `View Channel`/`Connect`/`Speak` validation, one connection,
+  player, subscription, arbitrary WAV/FFmpeg resource, playback state/error/subscription guards, and idempotent cleanup.
+- Wired speech configuration, protected manual router, safe speech events, runtime startup/rollback/shutdown, Compose
+  mounts/environment, `@discordjs/voice 0.19.2`, supported `opusscript 0.0.8`, and system FFmpeg in runtime images.
+- Complete Node checks pass: `61` suites / `593` tests, typecheck, lint, format check, production build, and
+  built-runtime smoke.
+- The local dependency report confirms `@discordjs/voice 0.19.2`, `opusscript 0.0.8`, native
+  `aes-256-gcm`, and bundled DAVE support.
+- Docker and FFmpeg are unavailable in the implementation environment. Runtime image/Compose build, container
+  dependency report, and ready/unready container startup evidence remain an operator checkpoint before completion.
+- M3 remains `not-started` until that checkpoint passes.
 
 Exit criteria:
 

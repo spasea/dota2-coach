@@ -1,7 +1,12 @@
-import type { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits } from 'discord.js';
 
-import type { DiscordGatewayAdapter } from './discord-gateway-adapter.js';
-import type { DiscordVoiceAdapter } from './discord-voice-adapter.js';
+import { createDiscordGatewayAdapter, type DiscordGatewayAdapter } from './discord-gateway-adapter.js';
+import {
+  createDiscordVoiceAdapter,
+  createDiscordVoiceAdapterDependencies,
+  type DiscordVoiceAdapter,
+  type DiscordVoiceAdapterOptions,
+} from './discord-voice-adapter.js';
 
 export type DiscordServingAdapters = Readonly<{
   gateway: DiscordGatewayAdapter;
@@ -18,7 +23,22 @@ export function createDiscordServingAdapters(
   botToken: string,
   dependencies: CreateDiscordServingAdaptersDependencies
 ): DiscordServingAdapters {
-  void botToken;
-  void dependencies;
-  throw new Error('Discord serving adapters are not implemented.');
+  const client = dependencies.createClient([GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]);
+
+  return Object.freeze({
+    gateway: dependencies.createGateway(botToken, client),
+    voice: dependencies.createVoice(client),
+  });
+}
+
+export function createProductionDiscordServingAdapters(
+  botToken: string,
+  voiceOptions: DiscordVoiceAdapterOptions
+): DiscordServingAdapters {
+  return createDiscordServingAdapters(botToken, {
+    createClient: (intents) => new Client({ intents }),
+    createGateway: (currentBotToken, client) =>
+      createDiscordGatewayAdapter(currentBotToken, { createClient: () => client }, 'serving'),
+    createVoice: (client) => createDiscordVoiceAdapter(voiceOptions, createDiscordVoiceAdapterDependencies(client)),
+  });
 }

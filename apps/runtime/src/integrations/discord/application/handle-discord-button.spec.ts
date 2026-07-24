@@ -82,6 +82,7 @@ describe('Discord button routing', () => {
       `recommend:${discordUserId}:match-01`,
       'present',
       'publish',
+      'enqueue_speech',
       'edit:discord.lost.delivered',
     ]);
   });

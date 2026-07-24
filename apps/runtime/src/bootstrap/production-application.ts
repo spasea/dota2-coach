@@ -11,7 +11,9 @@ import {
 } from '../integrations/discord/panel/discord-panel-lifecycle.js';
 import { ConfigurationError } from '../platform/config/configuration-error.js';
 import { loadDiscordConfig } from '../platform/config/load-discord-config.js';
+import { loadSpeechConfig } from '../platform/config/load-speech-config.js';
 import { parseDiscordProcessSettings } from '../platform/config/parse-discord-process-settings.js';
+import { parseSpeechProcessSettings } from '../platform/config/parse-speech-process-settings.js';
 import { parseApplicationSettings, type RuntimeLogLevel } from '../platform/config/parse-runtime-settings.js';
 import { createLogger } from '../platform/logging/create-logger.js';
 import { createServingRuntime } from './create-serving-runtime.js';
@@ -57,6 +59,10 @@ export function createProductionApplicationDependencies(
       const settings = parseDiscordProcessSettings(currentEnvironment);
       return loadDiscordConfig(settings, (path) => readFile(path, 'utf8'));
     },
+    loadSpeechConfiguration: (currentEnvironment) => {
+      const settings = parseSpeechProcessSettings(currentEnvironment);
+      return loadSpeechConfig(settings, (path) => readFile(path, 'utf8'));
+    },
     provisionDiscordPanel: async (configuration) => {
       parseApplicationSettings(environment);
       const translator = createRussianDiscordTranslator();
@@ -71,8 +77,8 @@ export function createProductionApplicationDependencies(
         panel: createDiscordPanelDefinition(translator),
       });
     },
-    createServingRuntime: (currentEnvironment, configuration) =>
-      createServingRuntime(currentEnvironment, configuration, logger),
+    createServingRuntime: (currentEnvironment, discordConfiguration, speechConfiguration) =>
+      createServingRuntime(currentEnvironment, discordConfiguration, speechConfiguration, logger),
     recordPanelCreated: (result) => {
       logger.info({ code: 'DISCORD_PANEL_CREATED', ...result }, 'Discord panel created');
     },
