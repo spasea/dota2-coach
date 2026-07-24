@@ -4,7 +4,7 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 6 — Discord Voice and Lost Integration GREEN (in-progress)`
+- Current implementation phase: `Phase 7 — ARM64, Live Discord Verification, and Handoff (not-started)`
 - Last updated: `2026-07-24`
 
 Status values:
@@ -1145,7 +1145,7 @@ Kubernetes directories in this vertical.
 | M0. Contract baseline                                  | —         | Phase 0     | `completed`   |
 | M1. Speech core, config, and protected manual API      | Phase 1   | Phase 2     | `completed`   |
 | M2. Silero service and runtime TTS HTTP adapter        | Phase 3   | Phase 4     | `completed`   |
-| M3. Discord voice, Lost wiring, circuit, and lifecycle | Phase 5   | Phase 6     | `not-started` |
+| M3. Discord voice, Lost wiring, circuit, and lifecycle | Phase 5   | Phase 6     | `completed`   |
 | M4. ARM64/live verification and handoff                | —         | Phase 7     | `not-started` |
 
 ## Phase 0 — Contract Baseline
@@ -1596,7 +1596,7 @@ Exit criteria:
 
 ## Phase 6 — Discord Voice and Lost Integration GREEN
 
-Status: `in-progress`
+Status: `completed`
 
 Target end state: `green`
 
@@ -1639,9 +1639,11 @@ Implementation evidence:
   built-runtime smoke.
 - The local dependency report confirms `@discordjs/voice 0.19.2`, `opusscript 0.0.8`, native
   `aes-256-gcm`, and bundled DAVE support.
-- Docker and FFmpeg are unavailable in the implementation environment. Runtime image/Compose build, container
-  dependency report, and ready/unready container startup evidence remain an operator checkpoint before completion.
-- M3 remains `not-started` until that checkpoint passes.
+- Operator-confirmed the runtime image and Compose build, the container dependency report, and the complete
+  repository/container test workflow.
+- Operator-confirmed healthy runtime startup both with TTS ready and with TTS stopped/unavailable; text HTTP remains
+  healthy, and speech availability recovers after TTS is started again.
+- M3 is `completed`.
 
 Exit criteria:
 
