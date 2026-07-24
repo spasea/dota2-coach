@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 
 import type { RecommendLostActionResult } from '../../../modules/lost/public.js';
 import type { SetRequesterRoleOverrideResult } from '../../../modules/match/public.js';
@@ -82,6 +82,32 @@ describe('Discord button routing', () => {
       `recommend:${discordUserId}:match-01`,
       'present',
       'publish',
+      'edit:discord.lost.delivered',
+    ]);
+  });
+
+  it('admits the exact Lost voice text with baya only after public text succeeds', async () => {
+    const harness = createHarness();
+
+    await harness.handle({
+      interaction: interaction(),
+      responder: harness.responder,
+    });
+
+    expect(harness.enqueueSpeech).toHaveBeenCalledWith({
+      requestId: 'request-01',
+      source: 'lost',
+      speaker: 'baya',
+      text: recommendedResult.recommendation.voiceText,
+    });
+    expect(harness.operations).toEqual([
+      `resolve_scope:${discordUserId}`,
+      'debounce:match-01:lost',
+      'defer',
+      `recommend:${discordUserId}:match-01`,
+      'present',
+      'publish',
+      'enqueue_speech',
       'edit:discord.lost.delivered',
     ]);
   });
@@ -246,6 +272,10 @@ type HarnessOptions = Readonly<{
 function createHarness(options: HarnessOptions = {}) {
   const operations: string[] = [];
   const events: unknown[] = [];
+  const enqueueSpeech = jest.fn<HandleDiscordButtonDependencies['enqueueSpeech']>().mockImplementation(() => {
+    operations.push('enqueue_speech');
+    return Object.freeze({ status: 'queued', jobId: 'speech-job-01' });
+  });
   const responder: DiscordInteractionResponder = Object.freeze({
     replyEphemeral: (message) => {
       operations.push(`reply:${message.key}`);
@@ -310,11 +340,13 @@ function createHarness(options: HarnessOptions = {}) {
       operations.push('publish');
       return options.publishError === undefined ? Promise.resolve() : Promise.reject(options.publishError);
     },
+    enqueueSpeech,
     recordEvent: (event) => events.push(event),
   });
 
   return {
     handle: createHandleDiscordButton(dependencies),
+    enqueueSpeech,
     responder,
     operations,
     events,

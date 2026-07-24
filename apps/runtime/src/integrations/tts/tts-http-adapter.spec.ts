@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
 import { SpeechSynthesisError, type SynthesizeSpeech } from '../../modules/speech/public.js';
-import { createTtsHttpAdapter } from './tts-http-adapter.js';
+import { createTtsHttpAdapter, createTtsReadinessProbe } from './tts-http-adapter.js';
 
 const request = Object.freeze({
   requestId: 'speech-job-01',
@@ -11,6 +11,21 @@ const request = Object.freeze({
 });
 
 describe('TTS HTTP adapter', () => {
+  it('probes the bounded readiness endpoint without synthesis or retries', async () => {
+    const fetch = jest
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ status: 'ready', model: 'v5_5_ru', device: 'cpu' })));
+    const probeReadiness = createTtsReadinessProbe(defaultOptions, { fetch });
+    const signal = new AbortController().signal;
+
+    await expect(probeReadiness(signal)).resolves.toBe('ready');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('http://tts:8080/ready', {
+      method: 'GET',
+      signal,
+    });
+  });
+
   it('serializes the exact versioned synthesis request and returns an immutable audio artifact', async () => {
     const fixture = createFixture(successResponse());
 

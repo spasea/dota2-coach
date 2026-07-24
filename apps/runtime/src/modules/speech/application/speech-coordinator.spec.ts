@@ -137,6 +137,20 @@ function abortablePending(signal: AbortSignal): Promise<never> {
 }
 
 describe('Speech coordinator', () => {
+  it('starts in text-only recovery, probes immediately, and retries unavailable recovery after five seconds', async () => {
+    const recoverSpeechDelivery = jest
+      .fn<CreateSpeechCoordinatorDependencies['recoverSpeechDelivery']>()
+      .mockResolvedValue('unavailable');
+    const context = createTestContext({ recoverSpeechDelivery });
+
+    context.coordinator.start('recovering');
+    await settleCoordinator();
+
+    expect(context.coordinator.enqueue(manualInput())).toEqual({ status: 'text_only' });
+    expect(recoverSpeechDelivery).toHaveBeenCalledTimes(1);
+    expect(context.scheduledTasks.filter((task) => task.delayMs === 5_000 && !task.cancelled)).toHaveLength(1);
+  });
+
   it('accepts jobs only while started and returns immutable admission results', async () => {
     const { coordinator } = createTestContext();
 

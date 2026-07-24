@@ -13,6 +13,8 @@ export type TtsHttpAdapterDependencies = Readonly<{
   fetch: typeof globalThis.fetch;
 }>;
 
+export type ProbeTtsReadiness = (signal: AbortSignal) => Promise<'ready' | 'unavailable'>;
+
 const maxTtsAudioBytes = 4_194_304;
 
 export function createTtsHttpAdapter(
@@ -59,6 +61,15 @@ export function createTtsHttpAdapter(
       });
     }
   };
+}
+
+export function createTtsReadinessProbe(
+  options: Pick<TtsHttpAdapterOptions, 'baseUrl'>,
+  dependencies: TtsHttpAdapterDependencies
+): ProbeTtsReadiness {
+  void options;
+  void dependencies;
+  return () => Promise.resolve('unavailable');
 }
 
 const errorMappings = new Map<string, Readonly<{ reason: SpeechSynthesisFailureReason; timedOut: boolean }>>([

@@ -4,8 +4,8 @@
 
 - Plan status: `approved`
 - Issue: not assigned
-- Current implementation phase: `Phase 4 — Silero Service and TTS Client GREEN (completed)`
-- Last updated: `2026-07-23`
+- Current implementation phase: `Phase 5 — Discord Voice and Lost Integration RED (red-expected)`
+- Last updated: `2026-07-24`
 
 Status values:
 
@@ -354,6 +354,8 @@ constraints. All other completed Discord contracts remain in force.
 159. The TTS service necessarily receives the rendered text, including the configured alias for Lost, over the
      private service network. It does not persist or log it.
 160. Final asynchronous delivery is recorded separately using the same request/job IDs.
+     160a. Lost uses the Discord interaction request ID as its speech correlation request ID. The coordinator generates a
+     separate speech job ID.
 161. Stable runtime statuses are:
      `queued`, `completed`, `expired`, `failed`, `timed_out`, and `skipped_text_only`.
 162. Stable failure stages are:
@@ -369,6 +371,9 @@ constraints. All other completed Discord contracts remain in force.
 168. Runtime startup still requires the existing enabled Discord text Gateway/panel contract to succeed.
 169. After Discord text readiness, runtime starts the speech coordinator and launches voice/TTS recovery without
      making speech readiness a prerequisite for HTTP bind.
+     169a. Speech starts in `recovering`/text-only mode. The first recovery probe runs immediately; failed probes repeat
+     every `5_000 ms`. Manual admission returns unavailable and Lost skips voice until both TTS `/ready` and the
+     configured Discord voice connection are ready.
 170. HTTP bind makes the protected manual endpoint available only after the coordinator can make a deterministic
      admission decision.
 171. Runtime shutdown:
@@ -1536,7 +1541,7 @@ Exit criteria:
 
 ## Phase 5 — Discord Voice and Lost Integration RED
 
-Status: `not-started`
+Status: `red-expected`
 
 Target end state: `red-expected`
 
@@ -1565,6 +1570,22 @@ Run:
 
 - focused Discord/speech/lifecycle specs;
 - complete Node regression checks.
+
+Phase evidence:
+
+- Added compile-safe, production-unwired seams for shared Discord serving adapters, Discord voice ownership, TTS
+  readiness, combined speech recovery, initial coordinator recovery mode, Lost admission, and speech lifecycle.
+- Added RED coverage for serving-only `GuildVoiceStates`, one shared client, exact normal voice-channel
+  validation/permissions, one connection/player/subscription, WAV playback lifecycle, initial text-only recovery,
+  text-first Lost admission with exact `baya`/`voiceText`, and startup/rollback/shutdown ordering.
+- Existing coordinator/manual coverage continues to verify the shared Lost/manual FIFO, independent readiness and
+  playback watchdogs, two-failure circuit, asynchronous retry, manual `503`, cleanup, and privacy-safe events.
+- Full Jest evidence is `53` suites / `570` tests passing (`569` previously green plus the provisioning voice-free
+  guard) and `8` Phase 5 suites / `16` intentional RED tests failing only at the new stubs or missing integration
+  behavior.
+- Typecheck, lint, format check, production build, built-runtime smoke, and repository `git diff --check` pass.
+- No voice/Opus dependency, FFmpeg, Docker, Compose, package lock, or reachable production speech path was added.
+- M3 remains `not-started`.
 
 Exit criteria:
 

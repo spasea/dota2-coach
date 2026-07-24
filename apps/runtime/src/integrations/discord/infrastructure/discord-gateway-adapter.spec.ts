@@ -1,12 +1,20 @@
 import { EventEmitter } from 'node:events';
 
 import { describe, expect, it, jest } from '@jest/globals';
-import { Events, type Client, type Interaction } from 'discord.js';
+import { Events, GatewayIntentBits, type Client, type Interaction } from 'discord.js';
 
-import { createDiscordGatewayAdapter } from './discord-gateway-adapter.js';
+import { createDiscordGatewayAdapter, discordGatewayIntents } from './discord-gateway-adapter.js';
 import type { DiscordInteractionSource } from './discord-interaction-adapter.js';
 
 describe('Discord Gateway event adapter', () => {
+  it('keeps the provisioning client voice-free', () => {
+    expect(discordGatewayIntents.provisioning).toEqual([GatewayIntentBits.Guilds]);
+  });
+
+  it('adds GuildVoiceStates to the serving client', () => {
+    expect(discordGatewayIntents.serving).toEqual([GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]);
+  });
+
   it('waits for ClientReady when login resolves before the client becomes ready', async () => {
     const fixture = createClientFixture({ initiallyReady: false });
     const adapter = createDiscordGatewayAdapter('private-test-token', fixture.dependencies);

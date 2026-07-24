@@ -31,7 +31,7 @@ export type CreateServingRuntimeDependencies = Readonly<{
 
 const defaultDependencies: CreateServingRuntimeDependencies = Object.freeze({
   createCoreRuntime: createRuntimeWithLogger,
-  createDiscordGateway: createDiscordGatewayAdapter,
+  createDiscordGateway: (botToken) => createDiscordGatewayAdapter(botToken, undefined, 'serving'),
   monotonicNow: readMonotonicMilliseconds,
 });
 
@@ -70,6 +70,7 @@ export async function createServingRuntime(
   return createRuntimeLifecycle({
     http: coreRuntime,
     discord,
+    speech: null,
     recordGatewayStateChanged: (event) => {
       logger.warn(event, 'Discord Gateway state changed');
     },
@@ -112,6 +113,7 @@ function createDiscordServingLifecycle(
     setRequesterRoleOverride: coreRuntime.setRequesterRoleOverride,
     presentLostMessage: createPresentDiscordLostMessage(translator),
     publishMessage: gateway.publishMessage,
+    enqueueSpeech: () => Object.freeze({ status: 'text_only' }),
     recordEvent: (event) => {
       logger.info(event, 'Discord interaction handled');
     },

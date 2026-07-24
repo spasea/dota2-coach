@@ -35,6 +35,12 @@ export type DiscordServingLifecycle = Readonly<{
   destroy: () => Promise<void>;
 }>;
 
+export type SpeechServingLifecycle = Readonly<{
+  startRecovering: () => void;
+  stop: () => Promise<void>;
+  destroy: () => Promise<void>;
+}>;
+
 export type RuntimeLifecycle = Readonly<{
   start: () => Promise<RuntimeAddress>;
   stop: () => Promise<void>;
@@ -43,6 +49,7 @@ export type RuntimeLifecycle = Readonly<{
 export type CreateRuntimeLifecycleOptions = Readonly<{
   http: HttpRuntimeLifecycle;
   discord: DiscordServingLifecycle | null;
+  speech: SpeechServingLifecycle | null;
   recordGatewayStateChanged: (event: DiscordGatewayStateChangedEvent) => void;
   recordRuntimeStarted: (address: RuntimeAddress) => void;
   recordRuntimeStopped: () => void;

@@ -1,5 +1,6 @@
 export type {
   CreateSpeechCoordinatorDependencies,
+  EnqueueSpeech,
   EnqueueSpeechInput,
   EnqueueSpeechResult,
   SpeechCoordinator,
@@ -17,6 +18,8 @@ export type {
   VoiceOutput,
 } from './application/speech-ports.js';
 export { SpeechSynthesisError } from './application/speech-ports.js';
+export type { CreateSpeechRecoveryDependencies, ProbeSpeechDependency } from './application/speech-recovery.js';
+export { createRecoverSpeechDelivery } from './application/speech-recovery.js';
 export type { SpeechAudioArtifact, SpeechJob, SpeechJobStatus, SpeechSource } from './domain/speech-job.js';
 export { speechSpeakers } from './domain/speech-speaker.js';
 export type { SpeechSpeaker } from './domain/speech-speaker.js';

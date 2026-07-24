@@ -1,5 +1,6 @@
 import type { RecommendLostAction, RecommendLostActionResult } from '../../../modules/lost/public.js';
 import type { ContextUnavailableStatus, Role, SetRequesterRoleOverride } from '../../../modules/match/public.js';
+import type { EnqueueSpeech } from '../../../modules/speech/public.js';
 import type { DiscordButtonObservation, DiscordPanelTarget, PublishDiscordMessage } from '../discord.types.js';
 import { parseDiscordPanelAction, type DiscordPanelAction } from '../panel/discord-panel.js';
 import type { DiscordActionDebounce } from './action-debounce.js';
@@ -46,6 +47,7 @@ export type HandleDiscordButtonDependencies = Readonly<{
   setRequesterRoleOverride: SetRequesterRoleOverride;
   presentLostMessage: PresentDiscordLostMessage;
   publishMessage: PublishDiscordMessage;
+  enqueueSpeech: EnqueueSpeech;
   recordEvent: (event: DiscordInteractionLogEvent) => void;
 }>;
 

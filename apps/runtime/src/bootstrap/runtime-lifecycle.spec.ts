@@ -6,6 +6,7 @@ import {
   type DiscordGatewayState,
   type DiscordGatewayStateChangedEvent,
   type DiscordServingLifecycle,
+  type SpeechServingLifecycle,
 } from './runtime-lifecycle.js';
 
 describe('HTTP and Discord runtime lifecycle', () => {
@@ -27,6 +28,21 @@ describe('HTTP and Discord runtime lifecycle', () => {
       'start_accepting_interactions',
       'discord_connect',
       'validate_panel',
+      'http_start',
+      'runtime_started',
+    ]);
+  });
+
+  it('starts speech recovery after Discord text readiness without awaiting voice before HTTP bind', async () => {
+    const fixture = createLifecycleFixture({ speechEnabled: true });
+
+    await fixture.lifecycle.start();
+
+    expect(fixture.operations).toEqual([
+      'start_accepting_interactions',
+      'discord_connect',
+      'validate_panel',
+      'speech_start_recovering',
       'http_start',
       'runtime_started',
     ]);
@@ -89,6 +105,27 @@ describe('HTTP and Discord runtime lifecycle', () => {
     ]);
   });
 
+  it('rolls back speech before Discord after HTTP bind failure', async () => {
+    const fixture = createLifecycleFixture({
+      speechEnabled: true,
+      httpStartError: new Error('bind'),
+    });
+
+    await expect(fixture.lifecycle.start()).rejects.toBeDefined();
+
+    expect(fixture.operations).toEqual([
+      'start_accepting_interactions',
+      'discord_connect',
+      'validate_panel',
+      'speech_start_recovering',
+      'http_start',
+      'stop_accepting_interactions',
+      'speech_stop',
+      'speech_destroy',
+      'discord_destroy',
+    ]);
+  });
+
   it('preserves the original safe startup failure when rollback cleanup also fails', async () => {
     const fixture = createLifecycleFixture({
       validationError: new Error('private validation details'),
@@ -113,6 +150,23 @@ describe('HTTP and Discord runtime lifecycle', () => {
     expect(fixture.operations).toEqual([
       'stop_accepting_interactions',
       'http_stop',
+      'discord_destroy',
+      'runtime_stopped',
+    ]);
+  });
+
+  it('stops admission and active speech before HTTP, then destroys voice before Discord', async () => {
+    const fixture = createLifecycleFixture({ speechEnabled: true });
+
+    await fixture.lifecycle.start();
+    fixture.operations.length = 0;
+    await fixture.lifecycle.stop();
+
+    expect(fixture.operations).toEqual([
+      'stop_accepting_interactions',
+      'speech_stop',
+      'http_stop',
+      'speech_destroy',
       'discord_destroy',
       'runtime_stopped',
     ]);
@@ -192,6 +246,7 @@ describe('HTTP and Discord runtime lifecycle', () => {
 
 type LifecycleFixtureOptions = Readonly<{
   discordEnabled?: boolean;
+  speechEnabled?: boolean;
   connectError?: Error;
   startAcceptingError?: Error;
   validationError?: Error;
@@ -240,6 +295,19 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
       return options.destroyError === undefined ? Promise.resolve() : Promise.reject(options.destroyError);
     },
   });
+  const speech: SpeechServingLifecycle = Object.freeze({
+    startRecovering: () => {
+      operations.push('speech_start_recovering');
+    },
+    stop: () => {
+      operations.push('speech_stop');
+      return Promise.resolve();
+    },
+    destroy: () => {
+      operations.push('speech_destroy');
+      return Promise.resolve();
+    },
+  });
   const lifecycleOptions: CreateRuntimeLifecycleOptions = Object.freeze({
     http: Object.freeze({
       start: () => {
@@ -254,6 +322,7 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
       },
     }),
     discord: options.discordEnabled === false ? null : discord,
+    speech: options.speechEnabled === true ? speech : null,
     recordGatewayStateChanged: (event) => {
       operations.push(`gateway_state:${event.state}`);
 

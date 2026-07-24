@@ -40,15 +40,23 @@ export type CreateDiscordGatewayAdapterDependencies = Readonly<{
   createClient: () => Client;
 }>;
 
-const defaultDependencies: CreateDiscordGatewayAdapterDependencies = Object.freeze({
-  createClient: () => new Client({ intents: [GatewayIntentBits.Guilds] }),
+export type DiscordGatewayMode = 'provisioning' | 'serving';
+
+export const discordGatewayIntents: Readonly<Record<DiscordGatewayMode, readonly GatewayIntentBits[]>> = Object.freeze({
+  provisioning: Object.freeze([GatewayIntentBits.Guilds]),
+  serving: Object.freeze([GatewayIntentBits.Guilds]),
 });
 
 export function createDiscordGatewayAdapter(
   botToken: string,
-  dependencies: CreateDiscordGatewayAdapterDependencies = defaultDependencies
+  dependencies?: CreateDiscordGatewayAdapterDependencies,
+  mode: DiscordGatewayMode = 'provisioning'
 ): DiscordGatewayAdapter {
-  const client = dependencies.createClient();
+  const client =
+    dependencies?.createClient() ??
+    new Client({
+      intents: discordGatewayIntents[mode],
+    });
   let resolvedChannel: TextChannel | null = null;
 
   return Object.freeze({

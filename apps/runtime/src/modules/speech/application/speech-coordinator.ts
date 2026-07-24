@@ -15,6 +15,8 @@ export type EnqueueSpeechResult =
   | Readonly<{ status: 'text_only' }>
   | Readonly<{ status: 'stopped' }>;
 
+export type EnqueueSpeech = (input: EnqueueSpeechInput) => EnqueueSpeechResult;
+
 export type SpeechFailureStage =
   'admission' | 'tts_readiness' | 'synthesis' | 'tts_protocol' | 'voice_readiness' | 'playback' | 'cleanup';
 
@@ -63,8 +65,8 @@ export type CreateSpeechCoordinatorDependencies = Readonly<{
 }>;
 
 export type SpeechCoordinator = Readonly<{
-  start: () => void;
-  enqueue: (input: EnqueueSpeechInput) => EnqueueSpeechResult;
+  start: (initialMode?: 'ready' | 'recovering') => void;
+  enqueue: EnqueueSpeech;
   stop: () => Promise<void>;
 }>;
 
